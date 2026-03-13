@@ -1,0 +1,79 @@
+{
+  "expo": {
+    "name": "SmartBottle",
+    "slug": "SmartBottle",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "scheme": "smartbottle",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0EA5E9"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.smartbottle.app",
+      "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "SmartBottle needs Bluetooth to connect to your smart water bottle and track your hydration.",
+        "NSBluetoothPeripheralUsageDescription": "SmartBottle needs Bluetooth to connect to your smart water bottle and track your hydration.",
+        "UIBackgroundModes": [
+          "bluetooth-central",
+          "bluetooth-central"
+        ],
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0EA5E9",
+        "foregroundImage": "./assets/adaptive-icon.png"
+      },
+      "package": "com.smartbottle.app",
+      "permissions": [
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-font",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#0EA5E9"
+        }
+      ],
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": true,
+          "modes": [
+            "peripheral",
+            "central"
+          ],
+          "bluetoothAlwaysPermission": "SmartBottle needs Bluetooth to connect to your smart water bottle."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "27298869-1c90-4eba-aa22-7cf2ca27acde"
+      }
+    }
+  }
+}
