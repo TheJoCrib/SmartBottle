@@ -8,10 +8,13 @@ import {
   Alert,
   TextInput,
   Modal,
+  Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { useQuery, useMutation } from "convex/react";
+import * as ImagePicker from "expo-image-picker";
+import * as Haptics from "expo-haptics";
 import { api } from "../../convex/_generated/api";
 import { useAuthStore } from "../../stores/authStore";
 import { useSettingsStore } from "../../stores/settingsStore";
@@ -44,6 +47,68 @@ export default function Settings() {
   const [quietHoursEnabled, setQuietHoursEnabled] = useState(
     notifications.quietHoursStart !== null
   );
+
+  const handlePickAvatar = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert(
+        "Permission Required",
+        "Please allow photo access to change your avatar."
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.5,
+    });
+
+    if (!result.canceled && result.assets[0] && token) {
+      handlePickEmoji();
+    }
+  };
+
+  const AVATAR_EMOJIS = [
+    "👤", "😀", "😎", "🤓", "🧑", "👩", "👨", "🦸", "🧑‍💻",
+    "🏃", "🧘", "💪", "🌊", "💧", "🐬", "🐳", "🦈", "🌺",
+  ];
+  const [showAvatarModal, setShowAvatarModal] = useState(false);
+
+  const handlePickEmoji = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setShowAvatarModal(true);
+  };
+
+  const handleSelectAvatar = async (emoji: string) => {
+    if (!token) return;
+    try {
+      await updateProfile({ token, avatar: emoji });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setShowAvatarModal(false);
+    } catch (error: any) {
+      Alert.alert("Error", error.message);
+    }
+  };
+
+  const handlePrivacy = () => {
+    Alert.alert(
+      "Privacy Policy",
+      "SmartBottle collects hydration data, health profile information, and device data to provide personalized hydration tracking.\n\nYour data is stored securely and never sold to third parties.\n\nYou can request data deletion by contacting support.",
+      [{ text: "OK" }]
+    );
+  };
+
+  const handleHelp = () => {
+    Alert.alert("Help & Support", "Need help with SmartBottle?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Email Support",
+        onPress: () => Linking.openURL("mailto:support@smartbottle.app"),
+      },
+    ]);
+  };
 
   const handleLogout = () => {
     Alert.alert("Logout", "Are you sure you want to logout?", [
@@ -150,9 +215,15 @@ export default function Settings() {
             className="flex-row items-center bg-surface-light dark:bg-surface-dark rounded-2xl p-4"
             onPress={() => router.push("/onboarding/profile")}
           >
-            <View className="w-16 h-16 bg-primary-100 dark:bg-primary-900 rounded-full items-center justify-center">
+            <TouchableOpacity
+              className="w-16 h-16 bg-primary-100 dark:bg-primary-900 rounded-full items-center justify-center"
+              onPress={handlePickEmoji}
+            >
               <Text className="text-2xl">{user?.avatar || "👤"}</Text>
-            </View>
+              <View className="absolute -bottom-0.5 -right-0.5 w-6 h-6 bg-primary-500 rounded-full items-center justify-center border-2 border-white dark:border-gray-800">
+                <Ionicons name="camera" size={12} color="white" />
+              </View>
+            </TouchableOpacity>
             <View className="flex-1 ml-4">
               <Text className="text-lg font-semibold text-text-light-primary dark:text-text-dark-primary">
                 {user?.name || "User"}
@@ -379,13 +450,13 @@ export default function Settings() {
               icon="shield-checkmark"
               iconColor="#10B981"
               title="Privacy"
-              onPress={() => {}}
+              onPress={handlePrivacy}
             />
             <SettingsRow
               icon="help-circle"
               iconColor="#64748B"
               title="Help & Support"
-              onPress={() => {}}
+              onPress={handleHelp}
             />
             <SettingsRow
               icon="log-out"
@@ -575,6 +646,37 @@ export default function Settings() {
             >
               <Text className="text-white font-semibold text-lg">Save</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      
+      <Modal visible={showAvatarModal} transparent animationType="slide">
+        <View className="flex-1 justify-end bg-black/50">
+          <View className="bg-background-light dark:bg-background-dark rounded-t-3xl p-6">
+            <View className="flex-row items-center justify-between mb-6">
+              <Text className="text-xl font-bold text-text-light-primary dark:text-text-dark-primary">
+                Choose Avatar
+              </Text>
+              <TouchableOpacity onPress={() => setShowAvatarModal(false)}>
+                <Ionicons name="close" size={24} color="#94A3B8" />
+              </TouchableOpacity>
+            </View>
+            <View className="flex-row flex-wrap justify-center">
+              {AVATAR_EMOJIS.map((emoji) => (
+                <TouchableOpacity
+                  key={emoji}
+                  className={`w-14 h-14 m-1.5 rounded-full items-center justify-center ${
+                    user?.avatar === emoji
+                      ? "bg-primary-500"
+                      : "bg-surface-light dark:bg-surface-dark"
+                  }`}
+                  onPress={() => handleSelectAvatar(emoji)}
+                >
+                  <Text className="text-2xl">{emoji}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
         </View>
       </Modal>

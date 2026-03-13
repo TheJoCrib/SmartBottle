@@ -37,6 +37,8 @@ export default function Social() {
   const acceptRequest = useMutation(api.social.acceptFriendRequest);
   const rejectRequest = useMutation(api.social.rejectFriendRequest);
   const createChallenge = useMutation(api.social.createChallenge);
+  const joinChallengeMutation = useMutation(api.social.joinChallenge);
+  const leaveChallengeMutation = useMutation(api.social.leaveChallenge);
 
   if (minimalSocialMode) {
     return (
@@ -82,6 +84,34 @@ export default function Social() {
     } catch (error: any) {
       Alert.alert("Error", error.message);
     }
+  };
+
+  const handleJoinChallenge = async (challengeId: any) => {
+    if (!token) return;
+    try {
+      await joinChallengeMutation({ token, challengeId });
+      Alert.alert("Success", "You joined the challenge!");
+    } catch (error: any) {
+      Alert.alert("Error", error.message || "Failed to join challenge");
+    }
+  };
+
+  const handleLeaveChallenge = async (challengeId: any) => {
+    if (!token) return;
+    Alert.alert("Leave Challenge", "Are you sure you want to leave?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Leave",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await leaveChallengeMutation({ token, challengeId });
+          } catch (error: any) {
+            Alert.alert("Error", error.message || "Failed to leave challenge");
+          }
+        },
+      },
+    ]);
   };
 
   const handleCreateChallenge = async () => {

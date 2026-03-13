@@ -18,8 +18,9 @@
       "infoPlist": {
         "NSBluetoothAlwaysUsageDescription": "SmartBottle needs Bluetooth to connect to your smart water bottle and track your hydration.",
         "NSBluetoothPeripheralUsageDescription": "SmartBottle needs Bluetooth to connect to your smart water bottle and track your hydration.",
+        "NSPhotoLibraryUsageDescription": "SmartBottle needs access to your photos to set your profile avatar.",
+        "NSCameraUsageDescription": "SmartBottle needs access to your camera to take a profile photo.",
         "UIBackgroundModes": [
-          "bluetooth-central",
           "bluetooth-central"
         ],
         "ITSAppUsesNonExemptEncryption": false
@@ -28,7 +29,8 @@
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#0EA5E9",
-        "foregroundImage": "./assets/adaptive-icon.png"
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "package": "com.smartbottle.app",
       "permissions": [
@@ -47,6 +49,21 @@
       "expo-router",
       "expo-secure-store",
       "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0EA5E9",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "SmartBottle needs access to your photos to set your profile avatar.",
+          "cameraPermission": "SmartBottle needs access to your camera to take a profile photo."
+        }
+      ],
       [
         "expo-notifications",
         {

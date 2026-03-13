@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery } from "convex/react";
+import { useKeepAwake } from "expo-keep-awake";
 import { api } from "../../convex/_generated/api";
 import { useAuthStore } from "../../stores/authStore";
 import { useBottleStore } from "../../stores/bottleStore";
@@ -12,6 +13,8 @@ import { Ionicons } from "@expo/vector-icons";
 type CalibrationStep = "empty" | "full" | "done";
 
 export default function CalibrateBottle() {
+  useKeepAwake();
+
   const { token } = useAuthStore();
   const { currentWeight, isConnected } = useBottleStore();
   const updateBottle = useMutation(api.bottles.update);

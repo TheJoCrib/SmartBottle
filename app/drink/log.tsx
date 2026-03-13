@@ -10,6 +10,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { useQuery } from "convex/react";
+import * as Haptics from "expo-haptics";
 import { api } from "../../convex/_generated/api";
 import { useAuthStore } from "../../stores/authStore";
 import { useOffline } from "../../hooks/useOffline";
@@ -39,6 +40,7 @@ export default function LogDrink() {
     }
 
     setIsLoading(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
       const result = await logDrink({
         token,
@@ -54,6 +56,7 @@ export default function LogDrink() {
           [{ text: "OK", onPress: () => router.back() }]
         );
       } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         router.back();
       }
     } catch (error: any) {
@@ -86,7 +89,10 @@ export default function LogDrink() {
               className="p-4"
               onPress={() => {
                 const current = parseInt(amount) || 0;
-                if (current > 50) setAmount(String(current - 50));
+                if (current > 50) {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setAmount(String(current - 50));
+                }
               }}
             >
               <Ionicons name="remove" size={24} color="#0EA5E9" />
@@ -100,6 +106,7 @@ export default function LogDrink() {
             <TouchableOpacity
               className="p-4"
               onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 const current = parseInt(amount) || 0;
                 setAmount(String(current + 50));
               }}
@@ -122,7 +129,10 @@ export default function LogDrink() {
                     ? "bg-primary-500"
                     : "bg-surface-light dark:bg-surface-dark border border-gray-200 dark:border-gray-700"
                 }`}
-                onPress={() => setAmount(String(a))}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setAmount(String(a));
+                }}
               >
                 <Text
                   className={`font-medium ${
@@ -152,7 +162,10 @@ export default function LogDrink() {
                     ? "bg-primary-500"
                     : "bg-surface-light dark:bg-surface-dark border border-gray-200 dark:border-gray-700"
                 }`}
-                onPress={() => setSelectedBeverage(beverage._id)}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setSelectedBeverage(beverage._id);
+                }}
               >
                 <Text className="text-lg mr-2">{beverage.icon}</Text>
                 <Text

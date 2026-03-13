@@ -1,4 +1,5 @@
 import { TouchableOpacity, Text, Alert } from "react-native";
+import * as Haptics from "expo-haptics";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { useAuthStore } from "../../stores/authStore";
@@ -17,6 +18,8 @@ export function QuickLogButton({ amount, icon, label }: QuickLogButtonProps) {
   const handlePress = async () => {
     if (!token) return;
 
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
     const waterBeverage = beverages?.find(
       (b) => b.isDefault && b.name === "Water"
     );
@@ -34,7 +37,9 @@ export function QuickLogButton({ amount, icon, label }: QuickLogButtonProps) {
         isManual: true,
       });
 
-      if (!result.executed) {
+      if (result.executed) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } else {
         Alert.alert("Saved Offline", "Will sync when you're back online.");
       }
     } catch (error) {

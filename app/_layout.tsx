@@ -1,8 +1,9 @@
 import "../global.css";
-import { useEffect } from "react";
+import { useEffect, useCallback } from "react";
 import { View } from "react-native";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import * as SplashScreen from "expo-splash-screen";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
@@ -11,6 +12,8 @@ import { useAuthStore } from "../stores/authStore";
 import { offlineService } from "../services/offline";
 import { useOffline } from "../hooks/useOffline";
 import { OfflineBanner } from "../components/ui/OfflineBanner";
+
+SplashScreen.preventAutoHideAsync();
 
 const convex = new ConvexReactClient(
   process.env.EXPO_PUBLIC_CONVEX_URL || "https://your-deployment.convex.cloud"
@@ -32,12 +35,18 @@ function OfflineBannerWrapper() {
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
-  const { loadToken } = useAuthStore();
+  const { loadToken, isLoading } = useAuthStore();
 
   useEffect(() => {
     loadToken();
     return () => offlineService.cleanup();
   }, []);
+
+  useEffect(() => {
+    if (!isLoading) {
+      SplashScreen.hideAsync();
+    }
+  }, [isLoading]);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
