@@ -1,13 +1,12 @@
 import "../global.css";
-import { useEffect, useCallback } from "react";
-import { View } from "react-native";
+import { useEffect } from "react";
+import { View, useColorScheme } from "react-native";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
-import { useColorScheme } from "react-native";
 import { useAuthStore } from "../stores/authStore";
 import { offlineService } from "../services/offline";
 import { useOffline } from "../hooks/useOffline";
@@ -35,6 +34,7 @@ function OfflineBannerWrapper() {
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+  const isDark = colorScheme === "dark";
   const { loadToken, isLoading } = useAuthStore();
 
   useEffect(() => {
@@ -48,17 +48,26 @@ export default function RootLayout() {
     }
   }, [isLoading]);
 
+  const headerStyle = {
+    backgroundColor: isDark ? "#0F172A" : "#FFFFFF",
+  };
+  const headerTintColor = isDark ? "#F8FAFC" : "#0F172A";
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <ConvexProvider client={convex}>
           <View style={{ flex: 1 }}>
-            <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
+            <StatusBar style={isDark ? "light" : "dark"} />
             <OfflineBannerWrapper />
             <Stack
               screenOptions={{
                 headerShown: false,
                 animation: "slide_from_right",
+                headerStyle,
+                headerTintColor,
+                headerBackTitle: "Back",
+                headerShadowVisible: false,
               }}
             >
               <Stack.Screen name="index" />
@@ -103,6 +112,13 @@ export default function RootLayout() {
                   headerShown: true,
                   title: "Achievements",
                   presentation: "card",
+                }}
+              />
+              <Stack.Screen
+                name="dev"
+                options={{
+                  headerShown: false,
+                  presentation: "fullScreenModal",
                 }}
               />
             </Stack>

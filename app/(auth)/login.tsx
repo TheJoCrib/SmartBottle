@@ -23,21 +23,35 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
 
   const login = useMutation(api.auth.login);
+  const seedBeverages = useMutation(api.beverages.seedDefaults);
   const { setToken } = useAuthStore();
 
   const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert("Error", "Please fill in all fields");
+    if (!email.trim() || !password) {
+      Alert.alert("Missing Fields", "Please enter your email and password.");
       return;
     }
 
     setIsLoading(true);
     try {
-      const result = await login({ email, password });
+      const result = await login({ email: email.trim(), password });
       await setToken(result.token);
+
+      try {
+        await seedBeverages({});
+      } catch {
+      }
+
       router.replace("/");
     } catch (error: any) {
-      Alert.alert("Error", error.message || "Failed to login");
+      const msg = error.message || "";
+      if (msg.includes("Invalid email or password")) {
+        Alert.alert("Login Failed", "The email or password you entered is incorrect. Please try again.");
+      } else if (msg.includes("network") || msg.includes("fetch")) {
+        Alert.alert("Connection Error", "Unable to reach the server. Please check your internet connection.");
+      } else {
+        Alert.alert("Login Failed", msg || "Something went wrong. Please try again.");
+      }
     } finally {
       setIsLoading(false);
     }

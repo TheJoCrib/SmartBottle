@@ -1,4 +1,4 @@
-import { View, Text } from "react-native";
+import { View, Text, useColorScheme } from "react-native";
 import Svg, { Circle, Defs, LinearGradient, Stop } from "react-native-svg";
 import { useEffect } from "react";
 import Animated, {
@@ -22,6 +22,8 @@ export function WaterProgressRing({
   goalMl,
   size = 200,
 }: WaterProgressRingProps) {
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === "dark";
   const strokeWidth = size * 0.08;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
@@ -53,7 +55,7 @@ export function WaterProgressRing({
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke="#E2E8F0"
+          stroke={isDark ? "#334155" : "#E2E8F0"}
           strokeWidth={strokeWidth}
           fill="transparent"
         />

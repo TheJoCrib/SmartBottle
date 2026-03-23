@@ -46,7 +46,7 @@ export function BottleCard({
       <View className="flex-row items-center justify-between mb-2">
         <View
           className={`w-2 h-2 rounded-full ${
-            isConnected ? "bg-success-500" : "bg-gray-300"
+            isConnected ? "bg-success-500" : "bg-gray-300 dark:bg-gray-600"
           }`}
         />
         {bottle.bleDeviceId && (

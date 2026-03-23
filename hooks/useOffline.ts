@@ -80,10 +80,8 @@ export function useOffline() {
     }) => {
       const result = await offlineService.executeOrQueue("log_drink", args);
       if (!result.executed) {
-        setState((prev) => ({
-          ...prev,
-          pendingActions: prev.pendingActions + 1,
-        }));
+        const count = await offlineService.getPendingCount();
+        setState((prev) => ({ ...prev, pendingActions: count }));
       }
       return result;
     },
@@ -92,7 +90,13 @@ export function useOffline() {
 
   const syncNow = useCallback(async () => {
     setState((prev) => ({ ...prev, isSyncing: true }));
-    return offlineService.syncQueue();
+    const result = await offlineService.syncQueue();
+    setState((prev) => ({
+      ...prev,
+      isSyncing: false,
+      pendingActions: result.pending,
+    }));
+    return result;
   }, []);
 
   const getCachedData = useCallback(async () => {

@@ -182,7 +182,7 @@ export default function Stats() {
               
               <View className="flex-row flex-wrap">
                 {Array.from({ length: 12 }, (_, i) => {
-                  const monthName = new Date(2024, i).toLocaleDateString("en-US", { month: "short" });
+                  const monthName = new Date(new Date().getFullYear(), i).toLocaleDateString("en-US", { month: "short" });
                   const isCurrentMonth = i === new Date().getMonth();
                   const isPastMonth = i < new Date().getMonth();
                   return (

@@ -25,31 +25,51 @@ export default function Register() {
   const [isLoading, setIsLoading] = useState(false);
 
   const register = useMutation(api.auth.register);
+  const seedBeverages = useMutation(api.beverages.seedDefaults);
   const { setToken } = useAuthStore();
 
   const handleRegister = async () => {
-    if (!name || !email || !password || !confirmPassword) {
-      Alert.alert("Error", "Please fill in all fields");
+    if (!name.trim() || !email.trim() || !password || !confirmPassword) {
+      Alert.alert("Missing Fields", "Please fill in all fields.");
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      Alert.alert("Invalid Email", "Please enter a valid email address.");
       return;
     }
 
     if (password !== confirmPassword) {
-      Alert.alert("Error", "Passwords do not match");
+      Alert.alert("Password Mismatch", "The passwords you entered don't match.");
       return;
     }
 
     if (password.length < 8) {
-      Alert.alert("Error", "Password must be at least 8 characters");
+      Alert.alert("Weak Password", "Password must be at least 8 characters long.");
       return;
     }
 
     setIsLoading(true);
     try {
-      const result = await register({ email, password, name });
+      const result = await register({ email: email.trim(), password, name: name.trim() });
       await setToken(result.token);
+
+      try {
+        await seedBeverages({});
+      } catch {
+      }
+
       router.replace("/onboarding/profile");
     } catch (error: any) {
-      Alert.alert("Error", error.message || "Failed to register");
+      const msg = error.message || "";
+      if (msg.includes("Email already registered")) {
+        Alert.alert("Email Taken", "An account with this email already exists. Try signing in instead.");
+      } else if (msg.includes("network") || msg.includes("fetch")) {
+        Alert.alert("Connection Error", "Unable to reach the server. Please check your internet connection.");
+      } else {
+        Alert.alert("Registration Failed", msg || "Something went wrong. Please try again.");
+      }
     } finally {
       setIsLoading(false);
     }

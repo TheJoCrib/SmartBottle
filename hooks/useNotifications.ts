@@ -13,16 +13,20 @@ export function useNotifications() {
   const lastSmartReminderRef = useRef<number>(0);
 
   const scheduleReminders = useCallback(async () => {
-    if (!notifications.scheduledReminders) {
-      await notificationService.cancelAllReminders();
-      return;
-    }
+    try {
+      if (!notifications.scheduledReminders) {
+        await notificationService.cancelAllReminders();
+        return;
+      }
 
-    await notificationService.scheduleReminders(
-      notifications.reminderIntervalHours,
-      notifications.quietHoursStart,
-      notifications.quietHoursEnd
-    );
+      await notificationService.scheduleReminders(
+        notifications.reminderIntervalHours,
+        notifications.quietHoursStart,
+        notifications.quietHoursEnd
+      );
+    } catch (error) {
+      console.log("Failed to schedule reminders:", error);
+    }
   }, [
     notifications.scheduledReminders,
     notifications.reminderIntervalHours,
@@ -49,14 +53,18 @@ export function useNotifications() {
     }
 
     const percentage = todayStats.percentage || 0;
-    const hoursLeft = (22 - new Date().getHours());
+    const hoursLeft = Math.max(0, 22 - new Date().getHours());
 
     if (notifications.goalAlerts && hoursLeft > 0) {
       const expectedPercentage = ((24 - hoursLeft) / 16) * 100;
       if (percentage < expectedPercentage - 15) {
         const remaining = (todayStats.goalMl || 2000) - (todayStats.totalMl || 0);
-        await notificationService.sendGoalAlert(remaining, hoursLeft);
-        lastSmartReminderRef.current = now;
+        try {
+          await notificationService.sendGoalAlert(remaining, hoursLeft);
+          lastSmartReminderRef.current = now;
+        } catch (error) {
+          console.log("Failed to send goal alert:", error);
+        }
       }
     }
   }, [notifications, todayStats, user]);

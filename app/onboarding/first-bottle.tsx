@@ -25,7 +25,7 @@ export default function FirstBottle() {
         <View className="w-full mt-8">
           <TouchableOpacity
             className="flex-row items-center bg-primary-500 rounded-xl py-4 px-5 mb-3"
-            onPress={() => router.push("/bottle/add")}
+            onPress={() => router.replace("/bottle/add")}
           >
             <Ionicons name="bluetooth" size={24} color="white" />
             <Text className="text-white font-semibold text-lg ml-3 flex-1">

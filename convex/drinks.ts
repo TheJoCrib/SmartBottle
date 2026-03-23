@@ -51,8 +51,8 @@ export const log = mutation({
       if (streak.lastActiveDate !== today) {
         if (streak.lastActiveDate === yesterday) {
           newCurrentStreak = streak.currentStreak + 1;
-        } else if (streak.lastActiveDate !== today) {
-          newCurrentStreak = streak.lastActiveDate ? 1 : 1;
+        } else {
+          newCurrentStreak = 1;
         }
 
         await ctx.db.patch(streak._id, {

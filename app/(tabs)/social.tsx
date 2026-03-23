@@ -59,12 +59,23 @@ export default function Social() {
   const handleSendFriendRequest = async () => {
     if (!friendEmail.trim() || !token) return;
     try {
-      await sendFriendRequest({ token, friendEmail: friendEmail.trim() });
+      await sendFriendRequest({ token, friendEmail: friendEmail.trim().toLowerCase() });
       setFriendEmail("");
       setShowAddFriend(false);
-      Alert.alert("Success", "Friend request sent!");
+      Alert.alert("Request Sent", "Your friend request has been sent!");
     } catch (error: any) {
-      Alert.alert("Error", error.message || "Failed to send request");
+      const msg = error.message || "";
+      if (msg.includes("yourself")) {
+        Alert.alert("Oops", "You can't send a friend request to yourself.");
+      } else if (msg.includes("not found")) {
+        Alert.alert("User Not Found", "No account exists with that email address.");
+      } else if (msg.includes("already sent")) {
+        Alert.alert("Already Sent", "You've already sent a friend request to this person.");
+      } else if (msg.includes("already sent you")) {
+        Alert.alert("Pending Request", "This person has already sent you a friend request. Check your requests above!");
+      } else {
+        Alert.alert("Error", msg || "Failed to send request. Please try again.");
+      }
     }
   };
 

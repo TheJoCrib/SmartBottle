@@ -150,10 +150,16 @@ class OfflineService {
     return queue.length;
   }
 
+  private notifySyncCallbacks(result: { synced: number; failed: number; pending: number }): void {
+    this.onSyncCallbacks.forEach((cb) => cb(result));
+  }
+
   async syncQueue(): Promise<{ synced: number; failed: number; pending: number }> {
     if (this.isSyncing || !this.convexClient || !this._isOnline) {
       const queue = await this.getQueue();
-      return { synced: 0, failed: 0, pending: queue.length };
+      const result = { synced: 0, failed: 0, pending: queue.length };
+      this.notifySyncCallbacks(result);
+      return result;
     }
 
     this.isSyncing = true;
@@ -161,7 +167,9 @@ class OfflineService {
 
     if (queue.length === 0) {
       this.isSyncing = false;
-      return { synced: 0, failed: 0, pending: 0 };
+      const result = { synced: 0, failed: 0, pending: 0 };
+      this.notifySyncCallbacks(result);
+      return result;
     }
 
     let synced = 0;
@@ -171,6 +179,11 @@ class OfflineService {
     const sorted = [...queue].sort((a, b) => a.timestamp - b.timestamp);
 
     for (const action of sorted) {
+      if (Date.now() - action.timestamp > 24 * 60 * 60 * 1000) {
+        failed++;
+        continue;
+      }
+
       try {
         const mutation = ACTION_MAP[action.type] as FunctionReference<"mutation">;
         await this.convexClient.mutation(mutation, action.payload);
@@ -181,6 +194,7 @@ class OfflineService {
 
         if (this.isNetworkError(error)) {
           this._isOnline = false;
+          this.onStatusChangeCallbacks.forEach((cb) => cb(false));
           remainingQueue.push(action);
           const currentIndex = sorted.indexOf(action);
           remainingQueue.push(...sorted.slice(currentIndex + 1));
@@ -188,10 +202,7 @@ class OfflineService {
         }
 
         action.retries++;
-        const isExpired = Date.now() - action.timestamp > 24 * 60 * 60 * 1000;
-        const maxRetries = action.retries >= 3;
-
-        if (!isExpired && !maxRetries) {
+        if (action.retries < 3) {
           remainingQueue.push(action);
         }
       }
@@ -201,7 +212,7 @@ class OfflineService {
     this.isSyncing = false;
 
     const result = { synced, failed, pending: remainingQueue.length };
-    this.onSyncCallbacks.forEach((cb) => cb(result));
+    this.notifySyncCallbacks(result);
     return result;
   }
 
@@ -243,7 +254,8 @@ class OfflineService {
       message.includes("fetch") ||
       message.includes("timeout") ||
       message.includes("connection") ||
-      message.includes("offline")
+      message.includes("offline") ||
+      message.includes("abort")
     );
   }
 }

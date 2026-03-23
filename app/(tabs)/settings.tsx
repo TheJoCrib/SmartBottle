@@ -23,6 +23,7 @@ import { formatHour, formatInterval, formatMl } from "../../utils/formatting";
 
 export default function Settings() {
   const { token, clearToken } = useAuthStore();
+  const [devTapCount, setDevTapCount] = useState(0);
   const {
     theme,
     notifications,
@@ -441,7 +442,7 @@ export default function Settings() {
         </View>
 
         
-        <View className="px-6 py-2 pb-8">
+        <View className="px-6 py-2">
           <Text className="text-sm font-semibold text-text-light-muted dark:text-text-dark-muted uppercase mb-2">
             Account
           </Text>
@@ -466,6 +467,31 @@ export default function Settings() {
             />
           </View>
         </View>
+
+        
+        <TouchableOpacity
+          className="items-center py-6 pb-10"
+          activeOpacity={1}
+          onPress={() => {
+            const next = devTapCount + 1;
+            setDevTapCount(next);
+            if (next >= 5) {
+              setDevTapCount(0);
+              router.push("/dev");
+            } else if (next >= 3) {
+              Haptics.selectionAsync();
+            }
+          }}
+        >
+          <Text className="text-xs text-text-light-muted dark:text-text-dark-muted">
+            SmartBottle v1.0.0
+          </Text>
+          {devTapCount >= 3 && (
+            <Text className="text-[10px] text-text-light-muted dark:text-text-dark-muted mt-1">
+              {5 - devTapCount} more taps...
+            </Text>
+          )}
+        </TouchableOpacity>
       </ScrollView>
 
       

@@ -9,7 +9,6 @@ export default function OnboardingLayout() {
       }}
     >
       <Stack.Screen name="profile" />
-      <Stack.Screen name="health-data" />
       <Stack.Screen name="first-bottle" />
     </Stack>
   );
