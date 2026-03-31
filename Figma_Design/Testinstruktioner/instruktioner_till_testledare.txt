@@ -1,0 +1,35 @@
+INSTRUKTIONER TILL TESTLEDARE - Vätskebalans
+
+Innan testet:
+- Ha testuppgifterna redo (utskrivna eller digitalt)
+- Se till att appen är öppen på startskärmen
+- Ha penna och papper redo för egna anteckningar
+- Räkna med 15-20 min per person
+
+Säg till testpersonen:
+"Vi testar appen, inte dig. Inga rätt eller fel. Gör uppgifterna på egen hand och säg gärna vad du tänker högt."
+
+Under testet - anteckna:
+- Var personen tvekar eller kör fast
+- Om de trycker fel och var
+- Reaktioner och spontana kommentarer
+- Ungefär hur lång tid varje uppgift tar
+
+Hjälp INTE med:
+- Var knappar finns
+- Hur man navigerar
+- Vad saker betyder
+- Stegen för att lösa uppgiften
+
+Om de kör fast helt säg: "Vad tror du att du kan prova?"
+Peka aldrig ut lösningen. Om de inte hittar, notera det och gå vidare.
+
+Efter testet:
+- Låt dem svara på avslutande frågorna
+- Tacka dem
+- Gå igenom dina anteckningar direkt efteråt
+
+Sammanställning när alla testat:
+- Samla alla svar och dina anteckningar
+- Hitta mönster (vad hade flera problem med?)
+- Använd som underlag vid gruppdiskussion

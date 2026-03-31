@@ -1,0 +1,37 @@
+TESTUPPGIFTER - Vätskebalans
+
+Projekt: Vätskebalans (Smart Bottle)
+Datum:
+Testperson:
+
+Gör uppgifterna i ordning. Försök lösa allt på egen hand utan hjälp.
+Skriv vad du tycker efter varje uppgift och ge betyg 1-5.
+
+1. Öppna appen. Beskriv vad du ser och vad du tror appen handlar om.
+
+2. Kolla runt på startsidan. Vad kan du göra härifrån?
+
+3. Kalibrera din flaska. Tänk att den väger 350g tom och 850g full.
+
+4. Beskriv vad som förändrats på startsidan efter kalibreringen.
+
+5. Simulera att du dricker vatten. Beskriv vad som händer.
+
+6. Hitta var du ändrar ditt dagliga mål och sätt det till 3000 ml.
+
+7. Slå på påminnelser och skicka en testnotis till dig själv.
+
+8. Gå tillbaka och fyll på flaskan. Beskriv vad som händer.
+
+9. Nollställ dagens vätskeintag.
+
+10. Kalibrera om flaskan med nya vikter: 300g tom, 780g full.
+
+Avslutande frågor:
+
+- Vad tyckte du om appen överlag?
+- Något som var extra bra?
+- Något som var förvirrande eller irriterande?
+- Skulle du använda appen på riktigt?
+
+Tack för att du testade!

@@ -1,285 +1,445 @@
-import { useEffect, useCallback } from "react";
-import { View, Text, TouchableOpacity, ScrollView } from "react-native";
+import React, { useEffect, useState, useCallback } from "react";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Dimensions,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import { useQuery } from "convex/react";
-import { api } from "../../convex/_generated/api";
-import { useAuthStore } from "../../stores/authStore";
-import { useBottleStore } from "../../stores/bottleStore";
-import { Ionicons } from "@expo/vector-icons";
-import { WaterProgressRing } from "../../components/ui/WaterProgressRing";
-import { QuickLogButton } from "../../components/ui/QuickLogButton";
-import { BottleCard } from "../../components/bottle/BottleCard";
-import { StreakBadge } from "../../components/gamification/StreakBadge";
-import { LevelProgress } from "../../components/gamification/LevelProgress";
-import { useNotifications } from "../../hooks/useNotifications";
-import {
-  getMotivationalMessage,
-  calculateHourlyRate,
-  getHoursRemaining,
-} from "../../utils/hydration";
-import { formatMl } from "../../utils/formatting";
+import { StatusBar } from "expo-status-bar";
+import * as Haptics from "expo-haptics";
+import { Easing } from "react-native";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withSpring,
+  FadeIn,
+  FadeInDown,
+  FadeInUp,
+  SlideInDown,
+} from "react-native-reanimated";
+import { Feather, MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
+import Slider from "@react-native-community/slider";
+
+import { useHydrationStore } from "../../stores/hydrationStore";
+import { WaterBottleCapsule } from "../../components/WaterBottleCapsule";
+import { CalibrationModal } from "../../components/CalibrationModal";
+
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 export default function Home() {
-  const { token } = useAuthStore();
-  const { currentWeight, isConnected, connectedDeviceId } = useBottleStore();
+  const store = useHydrationStore();
+  const [showCalibration, setShowCalibration] = useState(false);
+  const [sliderValue, setSliderValue] = useState(0);
 
-  const user = useQuery(api.auth.validateSession, token ? { token } : "skip");
-  const todayStats = useQuery(api.stats.getToday, token ? { token } : "skip");
-  const bottles = useQuery(api.bottles.list, token ? { token } : "skip");
-  const streak = useQuery(api.stats.getStreak, token ? { token } : "skip");
+  useEffect(() => {
+    if (store.isCalibrated && store.simulatedWeightG !== null) {
+      setSliderValue(store.simulatedWeightG);
+    }
+  }, [store.isCalibrated, store.simulatedWeightG]);
 
-  useNotifications();
+  const handleCalibrate = useCallback(
+    async (fullWeight: number, emptyWeight: number) => {
+      await store.calibrate(fullWeight, emptyWeight);
+      setSliderValue(fullWeight);
+      setShowCalibration(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    },
+    [store]
+  );
 
-  if (!user) {
+  const handleSliderChange = useCallback((value: number) => {
+    setSliderValue(value);
+  }, []);
+
+  const handleSliderComplete = useCallback(
+    (value: number) => {
+      store.setSimulatedWeight(Math.round(value));
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    },
+    [store]
+  );
+
+  const handleRefill = useCallback(() => {
+    store.refillBottle();
+    setSliderValue(store.fullWeightG);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  }, [store]);
+
+  const handleRecalibrate = useCallback(() => {
+    setShowCalibration(true);
+  }, []);
+
+  const progressPercent =
+    store.dailyGoalMl > 0
+      ? Math.min(1, store.todayIntakeMl / store.dailyGoalMl)
+      : 0;
+
+  const waterRemaining = store.getWaterRemainingMl();
+  const bottleCapacity = store.getBottleCapacityMl();
+  const statusText = store.getStatusText();
+
+  const progressBarWidth = useSharedValue(0);
+  useEffect(() => {
+    progressBarWidth.value = withTiming(progressPercent, {
+      duration: 600,
+      easing: Easing.bezier(0.4, 0, 0.2, 1),
+    });
+  }, [progressPercent]);
+
+  const progressBarStyle = useAnimatedStyle(() => ({
+    width: `${progressBarWidth.value * 100}%`,
+  }));
+
+  if (!store.isLoaded) {
     return (
-      <SafeAreaView className="flex-1 bg-background-light dark:bg-background-dark items-center justify-center">
-        <Text className="text-text-light-secondary dark:text-text-dark-secondary">
-          Loading...
-        </Text>
-      </SafeAreaView>
+      <View style={styles.loadingContainer}>
+        <StatusBar style="light" />
+      </View>
     );
   }
 
-  const percentage = todayStats?.percentage || 0;
-  const totalMl = todayStats?.totalMl || 0;
-  const goalMl = todayStats?.goalMl || user.dailyGoalMl;
-  const remainingMl = Math.max(0, goalMl - totalMl);
-  const hoursLeft = getHoursRemaining();
-  const hourlyRate = hoursLeft > 0 ? calculateHourlyRate(totalMl, goalMl, hoursLeft) : 0;
-  const motivationalMessage = getMotivationalMessage(percentage);
-
-  const connectedBottle = bottles?.find(
-    (b) => b.bleDeviceId === connectedDeviceId
-  );
-
   return (
-    <SafeAreaView className="flex-1 bg-background-light dark:bg-background-dark">
-      <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-        
-        <View className="px-6 pt-4 pb-2">
-          <View className="flex-row items-center justify-between">
-            <View>
-              <Text className="text-sm text-text-light-secondary dark:text-text-dark-secondary">
-                Welcome back,
-              </Text>
-              <Text className="text-2xl font-bold text-text-light-primary dark:text-text-dark-primary">
-                {user.name}
-              </Text>
-            </View>
-            <View className="flex-row items-center space-x-2">
-              
-              {streak && streak.currentStreak > 0 && (
-                <StreakBadge
-                  currentStreak={streak.currentStreak}
-                  longestStreak={streak.longestStreak}
-                  compact
+    <SafeAreaView style={styles.container} edges={["top"]}>
+      <StatusBar style="light" />
+
+      
+      <Animated.View
+        entering={FadeInDown.duration(500).delay(100)}
+        style={styles.header}
+      >
+        <View>
+          <Text style={styles.appTitle}>V\u00e4tskebalans</Text>
+          <Text style={styles.statusText}>{statusText}</Text>
+        </View>
+        <TouchableOpacity
+          style={styles.settingsButton}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.push("/(tabs)/settings");
+          }}
+          hitSlop={12}
+        >
+          <Feather name="settings" size={22} color="rgba(255,255,255,0.7)" />
+        </TouchableOpacity>
+      </Animated.View>
+
+      
+      <Animated.View
+        entering={FadeInDown.duration(500).delay(200)}
+        style={styles.progressSection}
+      >
+        <View style={styles.progressHeader}>
+          <Text style={styles.progressLabel}>Dagens m\u00e5l</Text>
+          <Text style={styles.progressValue}>
+            {store.todayIntakeMl}{" "}
+            <Text style={styles.progressDivider}>/</Text>{" "}
+            {store.dailyGoalMl} ml
+          </Text>
+        </View>
+        <View style={styles.progressBarTrack}>
+          <Animated.View style={[styles.progressBarFill, progressBarStyle]} />
+        </View>
+      </Animated.View>
+
+      
+      {!store.isCalibrated ? (
+        <Animated.View
+          entering={FadeInUp.duration(600).delay(300)}
+          style={styles.calibrationPrompt}
+        >
+          <View style={styles.calibrationIconContainer}>
+            <MaterialCommunityIcons
+              name="scale-balance"
+              size={48}
+              color="#3B82F6"
+            />
+          </View>
+          <Text style={styles.calibrationTitle}>Kalibrera din flaska</Text>
+          <Text style={styles.calibrationDescription}>
+            F\u00f6r att m\u00e4ta r\u00e4tt beh\u00f6ver vi veta vad din flaska v\u00e4ger n\u00e4r den \u00e4r full och n\u00e4r den \u00e4r tom.
+          </Text>
+          <TouchableOpacity
+            style={styles.calibrateButton}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              setShowCalibration(true);
+            }}
+            activeOpacity={0.85}
+          >
+            <Feather
+              name="zap"
+              size={18}
+              color="#FFFFFF"
+              style={{ marginRight: 8 }}
+            />
+            <Text style={styles.calibrateButtonText}>Starta kalibrering</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      ) : (
+        <View style={styles.calibratedContent}>
+          
+          <Animated.View
+            entering={FadeIn.duration(700).delay(300)}
+            style={styles.bottleContainer}
+          >
+            <WaterBottleCapsule
+              currentMl={waterRemaining}
+              maxMl={bottleCapacity}
+              width={Math.min(190, SCREEN_WIDTH * 0.46)}
+              height={Math.min(320, SCREEN_WIDTH * 0.78)}
+            />
+          </Animated.View>
+
+          
+          <Animated.View
+            entering={SlideInDown.duration(500).delay(500)}
+            style={styles.sensorCard}
+          >
+            <View style={styles.sensorHeader}>
+              <View style={styles.sensorTitleRow}>
+                <Ionicons
+                  name="radio-outline"
+                  size={20}
+                  color="#3B82F6"
+                  style={{ marginRight: 8 }}
                 />
-              )}
-              
-              <View className="flex-row items-center bg-primary-100 dark:bg-primary-900 px-3 py-1.5 rounded-full">
-                <Text className="text-primary-700 dark:text-primary-300 font-semibold">
-                  Lv.{user.level}
+                <Text style={styles.sensorTitle}>
+                  Sensordata (Simulering)
                 </Text>
               </View>
+              <TouchableOpacity
+                style={styles.refillButton}
+                onPress={handleRefill}
+                hitSlop={8}
+              >
+                <Ionicons
+                  name="water-outline"
+                  size={16}
+                  color="#3B82F6"
+                  style={{ marginRight: 4 }}
+                />
+                <Text style={styles.refillText}>Fyll p\u00e5</Text>
+              </TouchableOpacity>
             </View>
-          </View>
-        </View>
-
-        
-        <View className="px-6 py-6">
-          <View className="bg-surface-light dark:bg-surface-dark rounded-3xl p-6 items-center shadow-sm">
-            <WaterProgressRing
-              percentage={percentage}
-              currentMl={totalMl}
-              goalMl={goalMl}
-              size={220}
-            />
-            <Text className="text-sm text-text-light-secondary dark:text-text-dark-secondary mt-4">
-              {motivationalMessage}
-            </Text>
 
             
-            {percentage < 100 && hoursLeft > 0 && (
-              <View className="flex-row items-center mt-2 bg-primary-50 dark:bg-primary-900/30 px-4 py-2 rounded-full">
-                <Ionicons name="time-outline" size={14} color="#0EA5E9" />
-                <Text className="text-xs text-primary-600 dark:text-primary-400 ml-1">
-                  Drink ~{formatMl(hourlyRate)}/hr to meet your goal
-                </Text>
-              </View>
-            )}
-          </View>
-        </View>
-
-        
-        <View className="px-6 pb-4">
-          <Text className="text-lg font-semibold text-text-light-primary dark:text-text-dark-primary mb-3">
-            Quick Log
-          </Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            className="-mx-2"
-          >
-            <QuickLogButton amount={100} icon="💧" label="100ml" />
-            <QuickLogButton amount={200} icon="🥤" label="200ml" />
-            <QuickLogButton amount={250} icon="🫗" label="250ml" />
-            <QuickLogButton amount={500} icon="🍶" label="500ml" />
-            <TouchableOpacity
-              className="mx-2 items-center justify-center w-20 h-20 bg-primary-50 dark:bg-primary-900 rounded-2xl border-2 border-dashed border-primary-300"
-              onPress={() => router.push("/drink/log")}
-            >
-              <Ionicons name="add" size={32} color="#0EA5E9" />
-              <Text className="text-xs text-primary-500 mt-1">Custom</Text>
-            </TouchableOpacity>
-          </ScrollView>
-        </View>
-
-        
-        {isConnected && connectedBottle && (
-          <View className="px-6 pb-4">
-            <Text className="text-lg font-semibold text-text-light-primary dark:text-text-dark-primary mb-3">
-              Live Bottle
-            </Text>
-            <View className="bg-surface-light dark:bg-surface-dark rounded-2xl p-4">
-              <View className="flex-row items-center justify-between">
-                <View className="flex-row items-center">
-                  <View
-                    className="w-12 h-12 rounded-xl items-center justify-center mr-3"
-                    style={{ backgroundColor: connectedBottle.color + "30" }}
-                  >
-                    <Text className="text-2xl">{connectedBottle.icon}</Text>
-                  </View>
-                  <View>
-                    <Text className="font-semibold text-text-light-primary dark:text-text-dark-primary">
-                      {connectedBottle.name}
-                    </Text>
-                    <View className="flex-row items-center mt-0.5">
-                      <View className="w-2 h-2 bg-success-500 rounded-full mr-1.5" />
-                      <Text className="text-xs text-success-500">Connected</Text>
-                    </View>
-                  </View>
-                </View>
-                <View className="items-end">
-                  <Text className="text-2xl font-bold text-primary-500">
-                    {Math.round(currentWeight ?? 0)}g
-                  </Text>
-                  <Text className="text-[10px] text-text-light-muted dark:text-text-dark-muted">
-                    Current weight
-                  </Text>
-                </View>
-              </View>
-              
-              <View className="mt-3">
-                <View className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                  <View
-                    className="h-full bg-primary-500 rounded-full"
-                    style={{
-                      width: `${Math.min(
-                        100,
-                        Math.max(
-                          0,
-                          (((currentWeight ?? 0) - connectedBottle.emptyWeightG) /
-                            (connectedBottle.fullWeightG - connectedBottle.emptyWeightG)) *
-                            100
-                        )
-                      )}%`,
-                    }}
-                  />
-                </View>
-                <Text className="text-[10px] text-text-light-muted dark:text-text-dark-muted mt-1">
-                  Auto-detection active - drinks are logged automatically
-                </Text>
-              </View>
+            <View style={styles.sliderContainer}>
+              <Slider
+                style={styles.slider}
+                minimumValue={store.emptyWeightG}
+                maximumValue={store.fullWeightG}
+                value={sliderValue}
+                onValueChange={handleSliderChange}
+                onSlidingComplete={handleSliderComplete}
+                minimumTrackTintColor="#3B82F6"
+                maximumTrackTintColor="#E2E8F0"
+                thumbTintColor="#3B82F6"
+              />
             </View>
-          </View>
-        )}
 
-        
-        <View className="px-6 pb-4">
-          <View className="flex-row items-center justify-between mb-3">
-            <Text className="text-lg font-semibold text-text-light-primary dark:text-text-dark-primary">
-              My Bottles
-            </Text>
-            <TouchableOpacity onPress={() => router.push("/bottle/add")}>
-              <View className="flex-row items-center">
-                <Ionicons name="add-circle-outline" size={20} color="#0EA5E9" />
-                <Text className="text-primary-500 ml-1">Add</Text>
-              </View>
+            
+            <TouchableOpacity onPress={handleRecalibrate} hitSlop={8}>
+              <Text style={styles.recalibrateText}>Kalibrera om</Text>
             </TouchableOpacity>
-          </View>
-
-          {bottles && bottles.length > 0 ? (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              className="-mx-2"
-            >
-              {bottles.map((bottle) => (
-                <BottleCard
-                  key={bottle._id}
-                  bottle={bottle}
-                  isConnected={isConnected && bottle.bleDeviceId === connectedDeviceId}
-                  currentWeight={currentWeight}
-                  onPress={() => router.push(`/bottle/${bottle._id}`)}
-                />
-              ))}
-            </ScrollView>
-          ) : (
-            <TouchableOpacity
-              className="bg-surface-light dark:bg-surface-dark rounded-2xl p-6 items-center border-2 border-dashed border-gray-200 dark:border-gray-700"
-              onPress={() => router.push("/bottle/add")}
-            >
-              <Ionicons name="water-outline" size={40} color="#94A3B8" />
-              <Text className="text-text-light-secondary dark:text-text-dark-secondary mt-2 text-center">
-                Add your first smart bottle{"\n"}to start tracking
-              </Text>
-            </TouchableOpacity>
-          )}
+          </Animated.View>
         </View>
+      )}
 
-        
-        <View className="px-6 pb-4">
-          <Text className="text-lg font-semibold text-text-light-primary dark:text-text-dark-primary mb-3">
-            Today's Summary
-          </Text>
-          <View className="bg-surface-light dark:bg-surface-dark rounded-2xl p-4">
-            <View className="flex-row justify-between">
-              <View className="items-center flex-1">
-                <Text className="text-2xl font-bold text-primary-500">
-                  {todayStats?.drinkCount || 0}
-                </Text>
-                <Text className="text-xs text-text-light-muted dark:text-text-dark-muted mt-1">
-                  Drinks
-                </Text>
-              </View>
-              <View className="w-px bg-gray-200 dark:bg-gray-700" />
-              <View className="items-center flex-1">
-                <Text className="text-2xl font-bold text-secondary-500">
-                  {(totalMl / 1000).toFixed(1)}L
-                </Text>
-                <Text className="text-xs text-text-light-muted dark:text-text-dark-muted mt-1">
-                  Total
-                </Text>
-              </View>
-              <View className="w-px bg-gray-200 dark:bg-gray-700" />
-              <View className="items-center flex-1">
-                <Text className="text-2xl font-bold text-success-500">
-                  {percentage}%
-                </Text>
-                <Text className="text-xs text-text-light-muted dark:text-text-dark-muted mt-1">
-                  Goal
-                </Text>
-              </View>
-            </View>
-          </View>
-        </View>
-
-        
-        <View className="px-6 pb-8">
-          <LevelProgress level={user.level} xp={user.xp} compact />
-        </View>
-      </ScrollView>
+      
+      <CalibrationModal
+        visible={showCalibration}
+        onClose={() => setShowCalibration(false)}
+        onSave={handleCalibrate}
+        initialFullWeight={store.isCalibrated ? store.fullWeightG : undefined}
+        initialEmptyWeight={store.isCalibrated ? store.emptyWeightG : undefined}
+      />
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: "#0C1425",
+  },
+  container: {
+    flex: 1,
+    backgroundColor: "#0C1425",
+  },
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    paddingHorizontal: 24,
+    paddingTop: 8,
+    paddingBottom: 4,
+  },
+  appTitle: {
+    fontSize: 28,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    letterSpacing: -0.5,
+  },
+  statusText: {
+    fontSize: 14,
+    color: "rgba(148, 163, 184, 0.8)",
+    marginTop: 2,
+    fontWeight: "400",
+  },
+  settingsButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 2,
+  },
+  progressSection: {
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 8,
+  },
+  progressHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  progressLabel: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#FFFFFF",
+  },
+  progressValue: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "rgba(255, 255, 255, 0.7)",
+  },
+  progressDivider: {
+    color: "rgba(255, 255, 255, 0.35)",
+  },
+  progressBarTrack: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    overflow: "hidden",
+  },
+  progressBarFill: {
+    height: "100%",
+    borderRadius: 3,
+    backgroundColor: "#3B82F6",
+  },
+
+  calibrationPrompt: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 40,
+    paddingBottom: 60,
+  },
+  calibrationIconContainer: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: "rgba(59, 130, 246, 0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 24,
+  },
+  calibrationTitle: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: "#FFFFFF",
+    textAlign: "center",
+    marginBottom: 12,
+  },
+  calibrationDescription: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: "rgba(148, 163, 184, 0.7)",
+    textAlign: "center",
+    marginBottom: 32,
+  },
+  calibrateButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#3B82F6",
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    borderRadius: 50,
+    minWidth: 220,
+  },
+  calibrateButtonText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#FFFFFF",
+  },
+
+  calibratedContent: {
+    flex: 1,
+    justifyContent: "space-between",
+  },
+  bottleContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 16,
+  },
+  sensorCard: {
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255, 255, 255, 0.06)",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: 28,
+  },
+  sensorHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 14,
+  },
+  sensorTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  sensorTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#FFFFFF",
+  },
+  refillButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: "rgba(59, 130, 246, 0.1)",
+  },
+  refillText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#3B82F6",
+  },
+  sliderContainer: {
+    marginBottom: 10,
+  },
+  slider: {
+    width: "100%",
+    height: 36,
+  },
+  recalibrateText: {
+    fontSize: 13,
+    fontWeight: "500",
+    color: "rgba(148, 163, 184, 0.6)",
+    textDecorationLine: "underline",
+  },
+});
