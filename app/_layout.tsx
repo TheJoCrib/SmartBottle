@@ -17,23 +17,22 @@ const convex = new ConvexReactClient(
   process.env.EXPO_PUBLIC_CONVEX_URL || "https://your-deployment.convex.cloud"
 );
 
-offlineService.init(convex);
-
 export default function RootLayout() {
   const { loadToken, isLoading: authLoading } = useAuthStore();
-  const { loadState } = useHydrationStore();
+  const { loadState, isLoaded: hydrationLoaded } = useHydrationStore();
 
   useEffect(() => {
+    offlineService.init(convex);
     loadToken();
     loadState();
     return () => offlineService.cleanup();
   }, []);
 
   useEffect(() => {
-    if (!authLoading) {
+    if (!authLoading && hydrationLoaded) {
       SplashScreen.hideAsync();
     }
-  }, [authLoading]);
+  }, [authLoading, hydrationLoaded]);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo } from "react";
-import { View, Text, StyleSheet } from "react-native";
-import { Easing } from "react-native";
+import { View, Text, StyleSheet, Platform } from "react-native";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -8,6 +7,8 @@ import Animated, {
   withTiming,
   withSpring,
   interpolate,
+  Easing,
+  cancelAnimation,
 } from "react-native-reanimated";
 import Svg, {
   Path as SvgPath,
@@ -17,8 +18,6 @@ import Svg, {
   Rect,
 } from "react-native-svg";
 import { Ionicons } from "@expo/vector-icons";
-
-const AnimatedSvg = Animated.createAnimatedComponent(Svg);
 
 interface WaterBottleCapsuleProps {
   currentMl: number;
@@ -90,6 +89,11 @@ export function WaterBottleCapsule({
       -1,
       true
     );
+    return () => {
+      cancelAnimation(wave1Phase);
+      cancelAnimation(wave2Phase);
+      cancelAnimation(dropBounce);
+    };
   }, []);
 
   const waterContainerStyle = useAnimatedStyle(() => {
@@ -100,11 +104,11 @@ export function WaterBottleCapsule({
   });
 
   const wave1Style = useAnimatedStyle(() => ({
-    transform: [{ translateX: -wave1Phase.value * width }],
+    transform: [{ translateX: -wave1Phase.value * innerWidth }],
   }));
 
   const wave2Style = useAnimatedStyle(() => ({
-    transform: [{ translateX: -wave2Phase.value * width }],
+    transform: [{ translateX: -wave2Phase.value * innerWidth }],
   }));
 
   const dropStyle = useAnimatedStyle(() => {
@@ -115,12 +119,12 @@ export function WaterBottleCapsule({
   });
 
   const wave1Path = useMemo(
-    () => generateWavePath(width, 7, 1.2, 0),
-    [width]
+    () => generateWavePath(innerWidth, 7, 1.2, 0),
+    [innerWidth]
   );
   const wave2Path = useMemo(
-    () => generateWavePath(width, 5, 1.8, Math.PI * 0.7),
-    [width]
+    () => generateWavePath(innerWidth, 5, 1.8, Math.PI * 0.7),
+    [innerWidth]
   );
 
   const waveAreaHeight = 22;
@@ -163,9 +167,9 @@ export function WaterBottleCapsule({
             <View style={styles.waveLayer}>
               <Animated.View style={[styles.waveScroll, wave1Style]}>
                 <Svg
-                  width={width * 2}
+                  width={innerWidth * 2}
                   height={waveAreaHeight}
-                  viewBox={`0 0 ${width * 2} ${waveAreaHeight}`}
+                  viewBox={`0 0 ${innerWidth * 2} ${waveAreaHeight}`}
                 >
                   <Defs>
                     <SvgLinearGradient id="wave1Grad" x1="0" y1="0" x2="0" y2="1">
@@ -182,9 +186,9 @@ export function WaterBottleCapsule({
             <View style={[styles.waveLayer, { top: 2 }]}>
               <Animated.View style={[styles.waveScroll, wave2Style]}>
                 <Svg
-                  width={width * 2}
+                  width={innerWidth * 2}
                   height={waveAreaHeight}
-                  viewBox={`0 0 ${width * 2} ${waveAreaHeight}`}
+                  viewBox={`0 0 ${innerWidth * 2} ${waveAreaHeight}`}
                 >
                   <SvgPath d={wave2Path} fill="#38BDF8" opacity={0.5} />
                 </Svg>
@@ -193,7 +197,11 @@ export function WaterBottleCapsule({
 
             
             <View style={styles.waterBody}>
-              <Svg width={innerWidth} height="100%" preserveAspectRatio="none">
+              <Svg
+                width={innerWidth}
+                height={innerHeight}
+                preserveAspectRatio="none"
+              >
                 <Defs>
                   <SvgLinearGradient
                     id="waterGrad"
@@ -212,7 +220,7 @@ export function WaterBottleCapsule({
                   x="0"
                   y="0"
                   width={innerWidth}
-                  height="100%"
+                  height={innerHeight}
                   fill="url(#waterGrad)"
                 />
               </Svg>
@@ -225,7 +233,10 @@ export function WaterBottleCapsule({
       </View>
 
       
-      <View style={[styles.textOverlay, { width, height }]} pointerEvents="none">
+      <View style={[styles.textOverlay, { width, height }]}>
+        
+        <View style={styles.textBackdrop} />
+
         
         <Animated.View style={[styles.dropContainer, dropStyle]}>
           <Ionicons name="water" size={28} color="rgba(255,255,255,0.9)" />
@@ -298,6 +309,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingTop: 10,
+    pointerEvents: "none",
+  },
+  textBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0, 0, 0, 0.08)",
+    borderRadius: 90,
   },
   dropContainer: {
     marginBottom: 2,
@@ -307,9 +324,13 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#FFFFFF",
     letterSpacing: -2,
-    textShadowColor: "rgba(0, 0, 0, 0.3)",
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 8,
+    ...(Platform.OS === "ios"
+      ? {
+          textShadowColor: "rgba(0, 0, 0, 0.3)",
+          textShadowOffset: { width: 0, height: 2 },
+          textShadowRadius: 8,
+        }
+      : {}),
   },
   mlLabel: {
     fontSize: 16,
@@ -317,8 +338,12 @@ const styles = StyleSheet.create({
     color: "rgba(255, 255, 255, 0.75)",
     letterSpacing: 0.5,
     marginTop: -4,
-    textShadowColor: "rgba(0, 0, 0, 0.2)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
+    ...(Platform.OS === "ios"
+      ? {
+          textShadowColor: "rgba(0, 0, 0, 0.2)",
+          textShadowOffset: { width: 0, height: 1 },
+          textShadowRadius: 4,
+        }
+      : {}),
   },
 });

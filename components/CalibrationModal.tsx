@@ -10,7 +10,7 @@ import {
   Platform,
   Pressable,
 } from "react-native";
-import * as Haptics from "expo-haptics";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 
 interface CalibrationModalProps {
@@ -28,6 +28,7 @@ export function CalibrationModal({
   initialFullWeight,
   initialEmptyWeight,
 }: CalibrationModalProps) {
+  const insets = useSafeAreaInsets();
   const [fullWeight, setFullWeight] = useState(
     initialFullWeight?.toString() ?? ""
   );
@@ -50,12 +51,10 @@ export function CalibrationModal({
     if (isNaN(empty) || empty < 0) return;
     if (full <= empty) return;
 
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     onSave(full, empty);
   };
 
   const handleClear = (setter: (val: string) => void) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setter("");
   };
 
@@ -74,10 +73,16 @@ export function CalibrationModal({
     >
       <Pressable style={styles.overlay} onPress={onClose}>
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={styles.keyboardView}
         >
-          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+          <Pressable
+            style={[
+              styles.sheet,
+              { paddingBottom: Math.max(32, insets.bottom + 16) },
+            ]}
+            onPress={(e) => e.stopPropagation()}
+          >
             
             <View style={styles.handleBar} />
 
@@ -157,7 +162,11 @@ export function CalibrationModal({
 
             
             <View style={styles.actions}>
-              <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={onClose}
+                activeOpacity={0.7}
+              >
                 <Text style={styles.cancelText}>Avbryt</Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -167,6 +176,7 @@ export function CalibrationModal({
                 ]}
                 onPress={handleSave}
                 disabled={!isValid}
+                activeOpacity={0.85}
               >
                 <Feather
                   name="check"
@@ -191,6 +201,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   keyboardView: {
+    flex: 1,
     justifyContent: "flex-end",
   },
   sheet: {
@@ -198,7 +209,6 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     paddingHorizontal: 28,
-    paddingBottom: 40,
     paddingTop: 14,
   },
   handleBar: {
@@ -218,7 +228,7 @@ const styles = StyleSheet.create({
   description: {
     fontSize: 14,
     lineHeight: 20,
-    color: "#3B82F6",
+    color: "#64748B",
     marginBottom: 28,
   },
   fieldGroup: {

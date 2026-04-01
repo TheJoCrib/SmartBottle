@@ -1,8 +1,8 @@
-import { useEffect, useRef } from "react";
-import { View, Text, StyleSheet, Dimensions } from "react-native";
+import { useEffect } from "react";
+import { View, Text, StyleSheet } from "react-native";
 import { Redirect } from "expo-router";
+import { StatusBar } from "expo-status-bar";
 import { LinearGradient } from "expo-linear-gradient";
-import { Easing } from "react-native";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -10,17 +10,15 @@ import Animated, {
   withDelay,
   withSequence,
   FadeIn,
+  Easing,
 } from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuthStore } from "../stores/authStore";
 import { useHydrationStore } from "../stores/hydrationStore";
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
-
 export default function Index() {
   const { token, isLoading: authLoading, isAuthenticated } = useAuthStore();
   const { isLoaded: hydrationLoaded } = useHydrationStore();
-  const splashDone = useRef(false);
 
   const dropScale = useSharedValue(0.6);
   const dropOpacity = useSharedValue(0);
@@ -37,11 +35,6 @@ export default function Index() {
     titleOpacity.value = withDelay(300, withTiming(1, { duration: 500 }));
     titleTranslateY.value = withDelay(300, withTiming(0, { duration: 500, easing: Easing.out(Easing.cubic) }));
     subtitleOpacity.value = withDelay(600, withTiming(1, { duration: 400 }));
-
-    const timer = setTimeout(() => {
-      splashDone.current = true;
-    }, 1200);
-    return () => clearTimeout(timer);
   }, []);
 
   const dropStyle = useAnimatedStyle(() => ({
@@ -66,6 +59,7 @@ export default function Index() {
         end={{ x: 0.5, y: 1 }}
         style={styles.splashContainer}
       >
+        <StatusBar style="light" />
         <Animated.View style={[styles.dropContainer, dropStyle]}>
           <Ionicons name="water" size={56} color="rgba(255,255,255,0.95)" />
         </Animated.View>

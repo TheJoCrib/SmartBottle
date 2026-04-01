@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -10,7 +10,7 @@ import {
   StyleSheet,
   Platform,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as Haptics from "expo-haptics";
@@ -22,7 +22,12 @@ import { useHydrationStore } from "../../stores/hydrationStore";
 
 export default function Settings() {
   const store = useHydrationStore();
+  const insets = useSafeAreaInsets();
   const [goalInput, setGoalInput] = useState(store.dailyGoalMl.toString());
+
+  useEffect(() => {
+    setGoalInput(store.dailyGoalMl.toString());
+  }, [store.dailyGoalMl]);
 
   const handleSaveGoal = useCallback(async () => {
     const goal = parseInt(goalInput, 10);
@@ -105,7 +110,8 @@ export default function Settings() {
         >
           <TouchableOpacity
             style={styles.backButton}
-            onPress={() => router.back()}
+            onPress={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)"))}
+
             hitSlop={12}
           >
             <Feather name="arrow-left" size={22} color="#FFFFFF" />
@@ -200,7 +206,7 @@ export default function Settings() {
             activeOpacity={0.8}
           >
             <Ionicons
-              name="notifications-outline"
+              name="send-outline"
               size={16}
               color="#64748B"
               style={{ marginRight: 8 }}
@@ -257,7 +263,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 40,
+    paddingBottom: 60,
   },
   header: {
     flexDirection: "row",

@@ -6,11 +6,10 @@ import {
   StyleSheet,
   Dimensions,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as Haptics from "expo-haptics";
-import { Easing } from "react-native";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -20,6 +19,7 @@ import Animated, {
   FadeInDown,
   FadeInUp,
   SlideInDown,
+  Easing,
 } from "react-native-reanimated";
 import { Feather, MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
 import Slider from "@react-native-community/slider";
@@ -28,10 +28,11 @@ import { useHydrationStore } from "../../stores/hydrationStore";
 import { WaterBottleCapsule } from "../../components/WaterBottleCapsule";
 import { CalibrationModal } from "../../components/CalibrationModal";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 export default function Home() {
   const store = useHydrationStore();
+  const insets = useSafeAreaInsets();
   const [showCalibration, setShowCalibration] = useState(false);
   const [sliderValue, setSliderValue] = useState(0);
 
@@ -190,7 +191,7 @@ export default function Home() {
               currentMl={waterRemaining}
               maxMl={bottleCapacity}
               width={Math.min(190, SCREEN_WIDTH * 0.46)}
-              height={Math.min(320, SCREEN_WIDTH * 0.78)}
+              height={Math.min(SCREEN_HEIGHT * 0.38, 320)}
             />
           </Animated.View>
 
@@ -215,6 +216,7 @@ export default function Home() {
                 style={styles.refillButton}
                 onPress={handleRefill}
                 hitSlop={8}
+                activeOpacity={0.7}
               >
                 <Ionicons
                   name="water-outline"
@@ -242,7 +244,11 @@ export default function Home() {
             </View>
 
             
-            <TouchableOpacity onPress={handleRecalibrate} hitSlop={8}>
+            <TouchableOpacity
+              onPress={handleRecalibrate}
+              hitSlop={8}
+              activeOpacity={0.6}
+            >
               <Text style={styles.recalibrateText}>Kalibrera om</Text>
             </TouchableOpacity>
           </Animated.View>
@@ -399,7 +405,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     paddingHorizontal: 24,
     paddingTop: 20,
-    paddingBottom: 28,
+    paddingBottom: 36,
   },
   sensorHeader: {
     flexDirection: "row",
