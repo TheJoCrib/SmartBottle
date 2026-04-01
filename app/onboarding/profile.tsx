@@ -73,7 +73,7 @@ export default function ProfileStep() {
         ...(activityLevel ? { activityLevel: activityLevel as any } : {}),
       });
       if (isEditing) {
-        if (result?.dailyGoalMl) {
+        if (result?.dailyGoalMl != null) {
           await hydrationStore.setDailyGoal(result.dailyGoalMl);
           await hydrationStore.setWeeklyGoal(result.dailyGoalMl * 7);
           await hydrationStore.setMonthlyGoal(result.dailyGoalMl * 30);

@@ -207,7 +207,7 @@ export default function Home() {
         )}
 
         
-        {!isDisconnected && !store.isCalibrated && (
+        {!isDisconnected && !store.isCalibrated && !store.demoMode && (
           <Animated.View entering={FadeInDown.duration(400).delay(300)} style={styles.connectPrompt}>
             <TouchableOpacity
               style={styles.connectBtn}
