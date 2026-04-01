@@ -5,7 +5,8 @@ import { router } from "expo-router";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { useAuthStore } from "../../stores/authStore";
-import { Feather } from "@expo/vector-icons";
+import { useHydrationStore } from "../../stores/hydrationStore";
+import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { colors, spacing, typography } from "../../constants/theme";
@@ -16,9 +17,18 @@ const GENDERS = [
   { value: "other", label: "Annat", icon: "user" as const },
 ];
 
+const ACTIVITY_LEVELS = [
+  { value: "sedentary", label: "Stillasittande", iconName: "sofa-outline" as const },
+  { value: "light", label: "Lätt", iconName: "walk" as const },
+  { value: "moderate", label: "Måttlig", iconName: "run" as const },
+  { value: "active", label: "Aktiv", iconName: "run-fast" as const },
+  { value: "very_active", label: "Mycket aktiv", iconName: "weight-lifter" as const },
+];
+
 export default function ProfileStep() {
   const insets = useSafeAreaInsets();
   const { token } = useAuthStore();
+  const hydrationStore = useHydrationStore();
   const updateProfile = useMutation(api.auth.updateProfile);
   const user = useQuery(api.auth.validateSession, token ? { token } : "skip");
 
@@ -28,6 +38,7 @@ export default function ProfileStep() {
   const [age, setAge] = useState("");
   const [height, setHeight] = useState("");
   const [weight, setWeight] = useState("");
+  const [activityLevel, setActivityLevel] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
@@ -36,6 +47,7 @@ export default function ProfileStep() {
       if (user.age) setAge(String(user.age));
       if (user.height) setHeight(String(user.height));
       if (user.weight) setWeight(String(user.weight));
+      if (user.activityLevel) setActivityLevel(user.activityLevel);
     }
   }, [user]);
 
@@ -44,18 +56,28 @@ export default function ProfileStep() {
       Alert.alert("Fel", "Fyll i alla fält");
       return;
     }
+    if (isEditing && !activityLevel) {
+      Alert.alert("Fel", "Välj din aktivitetsnivå");
+      return;
+    }
     if (!token) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setIsLoading(true);
     try {
-      await updateProfile({
+      const result = await updateProfile({
         token,
         height: parseFloat(height),
         weight: parseFloat(weight),
         age: parseInt(age),
         gender: gender as any,
+        ...(activityLevel ? { activityLevel: activityLevel as any } : {}),
       });
       if (isEditing) {
+        if (result?.dailyGoalMl) {
+          await hydrationStore.setDailyGoal(result.dailyGoalMl);
+          await hydrationStore.setWeeklyGoal(result.dailyGoalMl * 7);
+          await hydrationStore.setMonthlyGoal(result.dailyGoalMl * 30);
+        }
         if (router.canGoBack()) router.back();
         else router.replace("/(tabs)");
       } else {
@@ -139,6 +161,35 @@ export default function ProfileStep() {
           </View>
         </Animated.View>
 
+        
+        {isEditing && (
+          <Animated.View entering={FadeInDown.duration(400).delay(250)}>
+            <Text style={styles.label}>AKTIVITETSNIVÅ</Text>
+            <View style={styles.activityList}>
+              {ACTIVITY_LEVELS.map((level) => {
+                const sel = activityLevel === level.value;
+                return (
+                  <TouchableOpacity
+                    key={level.value}
+                    style={[styles.activityChip, sel && styles.activityChipSel]}
+                    onPress={() => { setActivityLevel(level.value); Haptics.selectionAsync(); }}
+                    activeOpacity={0.7}
+                  >
+                    <MaterialCommunityIcons
+                      name={level.iconName as any}
+                      size={18}
+                      color={sel ? colors.accent : colors.textMuted}
+                    />
+                    <Text style={[styles.activityChipText, sel && { color: colors.accent }]}>
+                      {level.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </Animated.View>
+        )}
+
         <View style={{ height: 24 }} />
 
         
@@ -174,6 +225,27 @@ const styles = StyleSheet.create({
   metricsRow: { flexDirection: "row", gap: 10 },
   metricField: { flex: 1 },
   metricInput: { backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.inputBorder, borderRadius: 14, height: 52, paddingHorizontal: 12, fontSize: 20, fontWeight: "700", color: colors.textPrimary, textAlign: "center" },
+  activityList: { gap: 8 },
+  activityChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderWidth: 2,
+    borderColor: colors.border,
+  },
+  activityChipSel: {
+    borderColor: colors.accent,
+    backgroundColor: colors.primaryMuted,
+  },
+  activityChipText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: colors.textSecondary,
+  },
   nextBtn: { flexDirection: "row", backgroundColor: colors.primary, borderRadius: 14, height: 52, alignItems: "center", justifyContent: "center", gap: 8 },
   nextBtnText: { fontSize: 17, fontWeight: "700", color: "#FFF" },
 });

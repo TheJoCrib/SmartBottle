@@ -207,7 +207,7 @@ export const updateProfile = mutation({
 
     await ctx.db.patch(session.userId, updates);
 
-    return { success: true };
+    return { success: true, dailyGoalMl: updates.dailyGoalMl };
   },
 });
 

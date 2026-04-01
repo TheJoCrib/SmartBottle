@@ -180,8 +180,8 @@ export default function Home() {
         
         <Animated.View entering={FadeIn.duration(600).delay(200)} style={styles.bottleSection}>
           <BottleSkia
-            fillPercentage={store.isCalibrated ? fillPercentage : 0}
-            currentMl={store.isCalibrated ? waterRemaining : 0}
+            fillPercentage={(store.isCalibrated || store.demoMode) ? fillPercentage : 0}
+            currentMl={(store.isCalibrated || store.demoMode) ? waterRemaining : 0}
             bottleState={isDisconnected && !store.demoMode ? "disconnected" : weightData.bottleState}
             modelKey={store.activeBottleModelId}
             width={Math.min(200, SCREEN_WIDTH * 0.5)}
@@ -224,7 +224,7 @@ export default function Home() {
         )}
 
         
-        {store.isCalibrated && (!isDisconnected || store.demoMode) && (
+        {(store.isCalibrated || store.demoMode) && (!isDisconnected || store.demoMode) && (
           <Animated.View entering={FadeInDown.duration(400).delay(350)} style={styles.summaryCard}>
             <View style={styles.summaryItem}>
               <Text style={styles.summaryValue}>{Math.round(dailyProgress * 100)}%</Text>
