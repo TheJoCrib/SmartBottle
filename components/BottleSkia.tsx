@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect } from "react";
 import { View, Text, StyleSheet, Platform } from "react-native";
 import Animated, {
   useSharedValue,
@@ -11,7 +11,6 @@ import Animated, {
   cancelAnimation,
 } from "react-native-reanimated";
 import Svg, {
-  Path as SvgPath,
   Defs,
   LinearGradient as SvgLinearGradient,
   Stop,
@@ -71,10 +70,15 @@ export function BottleSkia({
   const isOffScale = bottleState === "off_scale";
   const isDisconnected = bottleState === "disconnected";
 
+  const blobSize = innerW * 3;
+  const blobBorderRadius1 = blobSize * 0.43;
+  const blobBorderRadius2 = blobSize * 0.45;
+  const blobBorderRadius3 = blobSize * 0.42;
+
   const waterLevel = useSharedValue(fillRatio);
-  const wave1Phase = useSharedValue(0);
-  const wave2Phase = useSharedValue(0);
-  const wave3Phase = useSharedValue(0);
+  const rotation1 = useSharedValue(0);
+  const rotation2 = useSharedValue(0);
+  const rotation3 = useSharedValue(0);
   const dropBounce = useSharedValue(0);
   const pulseOpacity = useSharedValue(1);
 
@@ -89,21 +93,24 @@ export function BottleSkia({
   }, [fillRatio, isDisconnected]);
 
   useEffect(() => {
-    wave1Phase.value = 0;
-    wave2Phase.value = 0;
-    wave3Phase.value = 0;
+    rotation1.value = 0;
+    rotation2.value = 0;
+    rotation3.value = 0;
 
-    wave1Phase.value = withRepeat(
-      withTiming(1, { duration: 3500, easing: Easing.linear }),
-      -1, false,
+    rotation1.value = withRepeat(
+      withTiming(360, { duration: 7000, easing: Easing.linear }),
+      -1,
+      false,
     );
-    wave2Phase.value = withRepeat(
-      withTiming(1, { duration: 5000, easing: Easing.linear }),
-      -1, false,
+    rotation2.value = withRepeat(
+      withTiming(-360, { duration: 5000, easing: Easing.linear }),
+      -1,
+      false,
     );
-    wave3Phase.value = withRepeat(
-      withTiming(1, { duration: 7000, easing: Easing.linear }),
-      -1, false,
+    rotation3.value = withRepeat(
+      withTiming(360, { duration: 11000, easing: Easing.linear }),
+      -1,
+      false,
     );
 
     if (isOnScale) {
@@ -132,28 +139,31 @@ export function BottleSkia({
     }
 
     return () => {
-      cancelAnimation(wave1Phase);
-      cancelAnimation(wave2Phase);
-      cancelAnimation(wave3Phase);
+      cancelAnimation(rotation1);
+      cancelAnimation(rotation2);
+      cancelAnimation(rotation3);
       cancelAnimation(dropBounce);
       cancelAnimation(pulseOpacity);
     };
   }, [bottleState]);
 
+  const waveExtra = 30;
   const waterStyle = useAnimatedStyle(() => ({
-    height: Math.max(0, waterLevel.value * innerH * 0.93),
+    height: Math.max(0, waterLevel.value * innerH * 0.88 + waveExtra),
   }));
 
-  const wave1Style = useAnimatedStyle(() => ({
-    transform: [{ translateX: -wave1Phase.value * innerW }],
+  const waveAmplitude = 12;
+
+  const blob1Style = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${rotation1.value}deg` }],
   }));
 
-  const wave2Style = useAnimatedStyle(() => ({
-    transform: [{ translateX: -wave2Phase.value * innerW }],
+  const blob2Style = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${rotation2.value}deg` }],
   }));
 
-  const wave3Style = useAnimatedStyle(() => ({
-    transform: [{ translateX: -wave3Phase.value * innerW }],
+  const blob3Style = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${rotation3.value}deg` }],
   }));
 
   const dropStyle = useAnimatedStyle(() => ({
@@ -163,12 +173,6 @@ export function BottleSkia({
   const bottlePulseStyle = useAnimatedStyle(() => ({
     opacity: pulseOpacity.value,
   }));
-
-  const wave1Path = useMemo(() => generateWavePath(innerW, 8, 0), [innerW]);
-  const wave2Path = useMemo(() => generateWavePath(innerW, 6, Math.PI * 0.6), [innerW]);
-  const wave3Path = useMemo(() => generateWavePath(innerW, 5, Math.PI * 1.2), [innerW]);
-
-  const waveAreaHeight = 26;
 
   const capsuleBorderColor = isDisconnected
     ? "rgba(255,255,255,0.08)"
@@ -223,72 +227,76 @@ export function BottleSkia({
 
             
             {!isDisconnected && (
-              <Animated.View style={[styles.waterFill, waterStyle]}>
+              <Animated.View
+                style={[styles.waterFill, waterStyle, { overflow: "visible" }]}
+              >
                 
-                <View style={styles.waveLayer}>
-                  <Animated.View style={[styles.waveScroll, wave1Style]}>
-                    <Svg
-                      width={innerW * 2}
-                      height={waveAreaHeight}
-                      viewBox={`0 0 ${innerW * 2} ${waveAreaHeight}`}
-                    >
-                      <Defs>
-                        <SvgLinearGradient
-                          id="bsWg1"
-                          x1="0"
-                          y1="0"
-                          x2="0"
-                          y2="1"
-                        >
-                          <Stop
-                            offset="0"
-                            stopColor={colors.waterLight}
-                            stopOpacity="0.9"
-                          />
-                          <Stop
-                            offset="1"
-                            stopColor={colors.waterMid}
-                            stopOpacity="0.7"
-                          />
-                        </SvgLinearGradient>
-                      </Defs>
-                      <SvgPath d={wave1Path} fill="url(#bsWg1)" />
-                    </Svg>
-                  </Animated.View>
-                </View>
+                
+                
+                
+                
+                
 
                 
-                <View style={[styles.waveLayer, { top: 2 }]}>
-                  <Animated.View style={[styles.waveScroll, wave2Style]}>
-                    <Svg
-                      width={innerW * 2}
-                      height={waveAreaHeight}
-                      viewBox={`0 0 ${innerW * 2} ${waveAreaHeight}`}
-                    >
-                      <SvgPath
-                        d={wave2Path}
-                        fill={colors.waterMid}
-                        opacity={0.5}
-                      />
-                    </Svg>
-                  </Animated.View>
-                </View>
+                <View
+                  style={[
+                    styles.waveSurface,
+                    {
+                      height: blobSize + waveExtra,
+                      top: 0,
+                    },
+                  ]}
+                >
+                  
+                  <Animated.View
+                    style={[
+                      styles.blob,
+                      {
+                        width: blobSize,
+                        height: blobSize,
+                        borderRadius: blobBorderRadius1,
+                        backgroundColor: colors.waterLight,
+                        opacity: 0.7,
+                        top: 0,
+                        left: (innerW - blobSize) / 2,
+                      },
+                      blob1Style,
+                    ]}
+                  />
 
-                
-                <View style={[styles.waveLayer, { top: 4, zIndex: 0 }]}>
-                  <Animated.View style={[styles.waveScroll, wave3Style]}>
-                    <Svg
-                      width={innerW * 2}
-                      height={waveAreaHeight}
-                      viewBox={`0 0 ${innerW * 2} ${waveAreaHeight}`}
-                    >
-                      <SvgPath
-                        d={wave3Path}
-                        fill={colors.waterDark}
-                        opacity={0.4}
-                      />
-                    </Svg>
-                  </Animated.View>
+                  
+                  <Animated.View
+                    style={[
+                      styles.blob,
+                      {
+                        width: blobSize,
+                        height: blobSize,
+                        borderRadius: blobBorderRadius2,
+                        backgroundColor: colors.waterMid,
+                        opacity: 0.5,
+                        top: 3,
+                        left: (innerW - blobSize) / 2,
+                      },
+                      blob2Style,
+                    ]}
+                  />
+
+                  
+                  <Animated.View
+                    style={[
+                      styles.blob,
+                      {
+                        width: blobSize,
+                        height: blobSize,
+                        borderRadius: blobBorderRadius3,
+                        backgroundColor: colors.waterDark,
+                        opacity: 0.4,
+                        top: 5,
+                        left: (innerW - blobSize) / 2,
+                      },
+                      blob3Style,
+                    ]}
+                  />
                 </View>
 
                 
@@ -307,7 +315,7 @@ export function BottleSkia({
                         y2="1"
                       >
                         <Stop offset="0" stopColor={colors.waterMid} />
-                        <Stop offset="0.5" stopColor="#0EA5E9" />
+                        <Stop offset="0.5" stopColor="#0EA5A0" />
                         <Stop offset="1" stopColor={colors.waterDark} />
                       </SvgLinearGradient>
                     </Defs>
@@ -361,7 +369,7 @@ export function BottleSkia({
 
           
           <Text style={[styles.mlLabel, isDisconnected && styles.mlLabelDim]}>
-            {isDisconnected ? "Frånkopplad" : "ml kvar"}
+            {isDisconnected ? "Fr\u00e5nkopplad" : "ml kvar"}
           </Text>
         </View>
       </Animated.View>
@@ -406,26 +414,20 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    overflow: "hidden",
   },
-  waveLayer: {
+  waveSurface: {
     position: "absolute",
-    top: -10,
     left: 0,
     right: 0,
-    height: 26,
-    overflow: "hidden",
+    overflow: "visible",
     zIndex: 2,
   },
-  waveScroll: {
+  blob: {
     position: "absolute",
-    left: 0,
-    top: 0,
-    flexDirection: "row",
   },
   waterBody: {
     flex: 1,
-    marginTop: 6,
+    marginTop: 10,
   },
   glassReflection: {
     position: "absolute",

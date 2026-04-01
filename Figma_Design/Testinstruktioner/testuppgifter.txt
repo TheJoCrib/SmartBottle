@@ -1,34 +1,50 @@
 TESTUPPGIFTER - Vätskebalans
 
-Projekt: Vätskebalans
+Projekt: Vätskebalans (Smart Bottle)
 Datum:
 Testperson:
 
-1. Öppna appen.
+1. Öppna appen. Vad ser du? Beskriv.
 
-2. Skapa ett konto om du inte redan har ett. Har du ett konto, logga in.
+2. Skapa ett konto om du inte har ett. Har du redan ett, logga in.
 
-3. Fyll i din profil med dina uppgifter.
+3. Fyll i din profil: kön, ålder, längd, vikt.
 
-4. När du kommit till startsidan, kolla runt. Vad ser du?
+4. Välj din aktivitetsnivå.
 
-5. Kalibrera din flaska. Ange X gram tom och X gram full.
+5. Gå igenom hälsotillstånd. Hoppa över om inget gäller dig.
 
-6. Dra i slidern för att simulera att du dricker vatten. Vad händer?
+6. Du får ett rekommenderat dagligt mål. Stämmer det med vad du förväntar dig?
 
-7. Fyll på flaskan igen.
+7. Lägg till din första flaska. Ge den ett namn och välj typ och färg.
 
-8. Gå till inställningar och ändra ditt dagsmål till 3000 ml.
+8. Nu är du på hemskärmen. Vad ser du? Vad visar flaskan?
 
-9. Slå på påminnelser och skicka en testnotis.
+9. Gå till inställningar och aktivera demoläge.
 
-10. Nollställ dagens vätskeintag.
+10. Ändra flaskstorlek i demoläget till 800 ml.
 
-11. Kalibrera om flaskan med nya vikter: 200g tom, 700g full.
+11. Dra i slidern så att du simulerar att du dricker vatten. Vad händer med flaskan?
 
-12. Gå tillbaka till startsidan och drick tills flaskan är nästan tom. Vad visar appen?
+12. Fyll på flaskan igen via demoläget.
 
-Skriv ner efter varje uppgift:
+13. Gå till statistik-sidan. Klicka på olika dagar i veckodiagrammet. Vad visas?
+
+14. Byt till månadsöversikten. Klicka på en dag med data. Vad ser du?
+
+15. Gå tillbaka till inställningar och ändra ditt dagsmål till 3000 ml.
+
+16. Gå till din profil och ändra din aktivitetsnivå. Ändras ditt rekommenderade mål?
+
+17. Stäng av demoläget. Vad visar hemskärmen nu?
+
+18. Hitta var du kan ta bort en flaska.
+
+19. Hitta var du kan logga ut.
+
+20. Hitta var du kan radera hela ditt konto.
+
+Skriv efter varje uppgift:
 - Gick det bra? Vad var svårt?
 - Betyg 1-5 (1 = dåligt, 5 = bra)
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -12,952 +12,557 @@ import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { useAuthStore } from "../../stores/authStore";
 import { useHydrationStore } from "../../stores/hydrationStore";
-import { Ionicons, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
-import Animated, { FadeInDown } from "react-native-reanimated";
+import { useDemoStore } from "../../stores/demoStore";
+import { useWeightData } from "../../hooks/useWeightData";
+import { Ionicons, Feather } from "@expo/vector-icons";
+import Animated, {
+  FadeInDown,
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withSpring,
+  withDelay,
+  Easing,
+} from "react-native-reanimated";
+import * as Haptics from "expo-haptics";
 import { colors, spacing, typography } from "../../constants/theme";
 
-type TabKey = "vecka" | "manad" | "ar" | "totalt";
+type TabKey = "idag" | "vecka" | "manad" | "totalt";
 
 const TABS: { key: TabKey; label: string }[] = [
+  { key: "idag", label: "Idag" },
   { key: "vecka", label: "Vecka" },
   { key: "manad", label: "Månad" },
-  { key: "ar", label: "År" },
   { key: "totalt", label: "Totalt" },
 ];
 
-const WEEKDAY_LABELS = ["Mån", "Tis", "Ons", "Tor", "Fre", "Lör", "Sön"];
-const MONTH_LABELS = [
-  "Jan", "Feb", "Mar", "Apr", "Maj", "Jun",
-  "Jul", "Aug", "Sep", "Okt", "Nov", "Dec",
-];
+const WEEKDAYS = ["Mån", "Tis", "Ons", "Tor", "Fre", "Lör", "Sön"];
+const SW = Dimensions.get("window").width;
 
-const SCREEN_WIDTH = Dimensions.get("window").width;
+function AnimatedBar({ value, maxValue, index, label, goal, selected, onPress }: {
+  value: number; maxValue: number; index: number; label: string; goal?: number;
+  selected?: boolean; onPress?: () => void;
+}) {
+  const barHeight = useSharedValue(0);
+  const targetH = maxValue > 0 ? Math.max(4, (value / maxValue) * 130) : 4;
+  const metGoal = goal ? value >= goal : false;
 
-const MILESTONES = [
-  { threshold: 10, label: "10 liter totalt" },
-  { threshold: 50, label: "50 liter totalt" },
-  { threshold: 100, label: "100 liter totalt" },
-  { threshold: 250, label: "250 liter totalt" },
-  { threshold: 500, label: "500 liter totalt" },
-  { threshold: 1000, label: "1 000 liter totalt" },
-];
+  useEffect(() => {
+    barHeight.value = withDelay(
+      index * 60,
+      withSpring(targetH, { damping: 14, stiffness: 90, mass: 0.8 })
+    );
+  }, [targetH]);
+
+  const barStyle = useAnimatedStyle(() => ({
+    height: barHeight.value,
+  }));
+
+  const barColor = selected
+    ? colors.textPrimary
+    : metGoal ? colors.success : colors.accent;
+
+  return (
+    <TouchableOpacity style={s.barCol} onPress={onPress} activeOpacity={0.7}>
+      <View style={s.barTrack}>
+        
+        {selected && value > 0 && (
+          <View style={s.barTooltip}>
+            <Text style={s.barTooltipText}>{value}</Text>
+            <Text style={s.barTooltipUnit}>ml</Text>
+          </View>
+        )}
+        <Animated.View style={[s.bar, barStyle, { backgroundColor: barColor }]} />
+      </View>
+      <Text style={[s.barLabel, selected && s.barLabelSel]}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
 
 export default function Stats() {
   const { token } = useAuthStore();
   const store = useHydrationStore();
-  const [activeTab, setActiveTab] = useState<TabKey>("vecka");
+  const demoStore = useDemoStore();
+  const weightData = useWeightData();
+  const [activeTab, setActiveTab] = useState<TabKey>("idag");
 
-  const skipArg = token ? { token } : "skip" as const;
+  const isDemo = store.demoMode;
 
-  const todayStats = useQuery(api.stats.getToday, skipArg);
-  const weeklyStats = useQuery(api.stats.getWeekly, skipArg);
-  const monthlyStats = useQuery(api.stats.getMonthly, skipArg);
-  const yearStats = useQuery(api.stats.getAllTime, skipArg);
-  const allTimeStats = useQuery(api.stats.getAllTime, skipArg);
-  const streakStats = useQuery(api.stats.getStreak, skipArg);
+  const skip = "skip" as const;
+  const todayStats = useQuery(api.stats.getToday, !isDemo && token ? { token } : skip);
+  const weeklyStats = useQuery(api.stats.getWeekly, !isDemo && token ? { token } : skip);
+  const streakStats = useQuery(api.stats.getStreak, !isDemo && token ? { token } : skip);
+  const allTimeStats = useQuery(api.stats.getAllTime, !isDemo && token ? { token } : skip);
 
-  function ProgressRing({
-    percentage,
-    size = 180,
-    strokeWidth = 14,
-  }: {
-    percentage: number;
-    size?: number;
-    strokeWidth?: number;
-  }) {
-    const clampedPct = Math.min(Math.max(percentage, 0), 100);
-    const radius = (size - strokeWidth) / 2;
-    const circumference = 2 * Math.PI * radius;
-    const center = size / 2;
-    const segmentCount = 60;
-    const filledSegments = Math.round((clampedPct / 100) * segmentCount);
+  const todayIntake = weightData.todayIntakeMl;
+  const dailyGoal = store.dailyGoalMl;
+  const dailyPct = dailyGoal > 0 ? Math.min(100, Math.round((todayIntake / dailyGoal) * 100)) : 0;
+  const streak = isDemo ? 0 : (streakStats?.currentStreak || 0);
+
+  const demoWeekData = useMemo(() => {
+    const dayOfWeek = new Date().getDay();
+    const adjustedDay = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    return WEEKDAYS.map((label, i) => ({
+      label,
+      totalMl: i < adjustedDay
+        ? Math.round(dailyGoal * (0.5 + (((i * 7 + 3) % 10) / 10) * 0.7))
+        : i === adjustedDay ? todayIntake : 0,
+    }));
+  }, [dailyGoal, todayIntake]);
+
+  const demoMonthData = useMemo(() => {
+    const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+    const today = new Date().getDate();
+    return Array.from({ length: daysInMonth }, (_, i) => {
+      if (i + 1 > today) return 0;
+      if (i + 1 === today) return todayIntake;
+      const seed = ((i + 1) * 17 + 7) % 10;
+      return Math.round(dailyGoal * (0.4 + seed * 0.08));
+    });
+  }, [dailyGoal, todayIntake]);
+
+  function IdagTab() {
+    const ringProgress = useSharedValue(0);
+    useEffect(() => {
+      ringProgress.value = withSpring(dailyPct / 100, { damping: 16, stiffness: 80 });
+    }, [dailyPct]);
+
+    const ringStyle = useAnimatedStyle(() => ({
+      width: `${ringProgress.value * 100}%`,
+    }));
 
     return (
-      <View style={[styles.ringContainer, { width: size, height: size }]}>
+      <View>
         
-        {Array.from({ length: segmentCount }).map((_, i) => {
-          const angle = (i / segmentCount) * 360 - 90;
-          const rad = (angle * Math.PI) / 180;
-          const dotX = center + radius * Math.cos(rad);
-          const dotY = center + radius * Math.sin(rad);
-          const isFilled = i < filledSegments;
-          return (
-            <View
-              key={i}
-              style={[
-                styles.ringDot,
-                {
-                  left: dotX - 3,
-                  top: dotY - 3,
-                  width: 6,
-                  height: 6,
-                  borderRadius: 3,
-                  backgroundColor: isFilled
-                    ? colors.primary
-                    : colors.surface,
-                },
-              ]}
-            />
-          );
-        })}
+        <Animated.View entering={FadeInDown.duration(400)} style={s.todayHero}>
+          <Text style={s.todayPct}>{dailyPct}%</Text>
+          <Text style={s.todayLabel}>av dagens mål</Text>
+          <View style={s.todayBar}>
+            <Animated.View style={[s.todayBarFill, ringStyle]} />
+          </View>
+        </Animated.View>
+
         
-        <View style={styles.ringCenter}>
-          <Text style={[typography.bigNumber, { fontSize: 44 }]}>
-            {Math.round(clampedPct)}
-          </Text>
-          <Text style={[typography.caption, { marginTop: -4 }]}>%</Text>
-        </View>
+        <Animated.View entering={FadeInDown.duration(400).delay(100)} style={s.statsRow}>
+          <View style={s.statBox}>
+            <Ionicons name="water" size={20} color={colors.accent} />
+            <Text style={s.statValue}>{todayIntake} ml</Text>
+            <Text style={s.statLabel}>druckit</Text>
+          </View>
+          <View style={s.statBox}>
+            <Feather name="target" size={20} color={colors.warning} />
+            <Text style={s.statValue}>{dailyGoal} ml</Text>
+            <Text style={s.statLabel}>mål</Text>
+          </View>
+          <View style={s.statBox}>
+            <Ionicons name="water-outline" size={20} color={colors.accent} />
+            <Text style={s.statValue}>{weightData.waterRemainingMl} ml</Text>
+            <Text style={s.statLabel}>i flaskan</Text>
+          </View>
+        </Animated.View>
+
+        
+        {streak > 0 && (
+          <Animated.View entering={FadeInDown.duration(400).delay(200)} style={s.streakCard}>
+            <Ionicons name="flame" size={24} color={colors.warning} />
+            <View style={{ marginLeft: 12 }}>
+              <Text style={s.streakValue}>{streak} dagar i rad</Text>
+              <Text style={s.streakLabel}>Du håller din streak igång!</Text>
+            </View>
+          </Animated.View>
+        )}
+
+        {isDemo && (
+          <Animated.View entering={FadeInDown.duration(400).delay(300)} style={s.demoTag}>
+            <Feather name="play-circle" size={14} color={colors.warning} />
+            <Text style={s.demoTagText}>Demoläge - simulerad data</Text>
+          </Animated.View>
+        )}
       </View>
     );
   }
 
-  function DagTab() {
-    const pct = todayStats?.percentage ?? 0;
-    const totalMl = todayStats?.totalMl ?? 0;
-    const goalMl = todayStats?.goalMl ?? store.dailyGoalMl;
-    const drinkCount = todayStats?.drinkCount ?? 0;
-    const currentStreak = streakStats?.currentStreak ?? 0;
-
-    return (
-      <Animated.View entering={FadeInDown.duration(400).delay(100)}>
-        
-        <View style={styles.card}>
-          <View style={styles.ringWrapper}>
-            <ProgressRing percentage={pct} />
-          </View>
-          <Text style={styles.mlText}>
-            {totalMl} / {goalMl} ml
-          </Text>
-          <View style={styles.drinkCountRow}>
-            <Ionicons name="water-outline" size={16} color={colors.primary} />
-            <Text style={styles.drinkCountText}>
-              {drinkCount} drycker idag
-            </Text>
-          </View>
-        </View>
-
-        
-        <View style={styles.card}>
-          <View style={styles.streakRow}>
-            <View style={styles.streakIconWrap}>
-              <Ionicons name="flame" size={24} color="#F59E0B" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.streakTitle}>
-                {currentStreak} dagar i rad
-              </Text>
-              <Text style={styles.streakSubtitle}>
-                Längsta: {streakStats?.longestStreak ?? 0} dagar
-              </Text>
-            </View>
-          </View>
-        </View>
-      </Animated.View>
-    );
-  }
-
   function VeckaTab() {
+    const [selectedDay, setSelectedDay] = useState<number | null>(null);
     const days = (weeklyStats as any)?.dailyBreakdown ?? [];
-    const maxMl = Math.max(
-      store.dailyGoalMl,
-      ...days.map((d: any) => d.totalMl)
-    );
-    const barAreaHeight = 160;
-    const goalLineY =
-      maxMl > 0
-        ? barAreaHeight - (store.dailyGoalMl / maxMl) * barAreaHeight
-        : barAreaHeight;
+    const weekTotal = weeklyStats?.totalMl ?? todayIntake;
+    const weekAvg = days.length > 0 ? Math.round(weekTotal / Math.max(days.length, 1)) : todayIntake;
 
-    const weeklyTotal = weeklyStats?.totalMl ?? 0;
-    const weeklyAvg = (weeklyStats as any)?.averageDailyMl ?? 0;
-    const weeklyProgress = store.getWeeklyProgress(weeklyTotal);
+    const displayDays = isDemo
+      ? demoWeekData
+      : WEEKDAYS.map((label, i) => ({
+          label,
+          totalMl: days[i]?.totalMl || 0,
+        }));
+
+    const demoMax = Math.max(dailyGoal, ...displayDays.map(d => d.totalMl), 1);
+    const sel = selectedDay !== null ? displayDays[selectedDay] : null;
 
     return (
-      <Animated.View entering={FadeInDown.duration(400).delay(100)}>
+      <View>
         
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Veckans översikt</Text>
-          <View style={styles.barChartContainer}>
-            
-            <View
-              style={[
-                styles.goalLine,
-                { top: goalLineY },
-              ]}
-            />
-            <Text
-              style={[
-                styles.goalLineLabel,
-                { top: goalLineY - 16 },
-              ]}
-            >
-              Mål
-            </Text>
-            
-            <View style={styles.barsRow}>
-              {WEEKDAY_LABELS.map((label, i) => {
-                const day = days[i];
-                const ml = day?.totalMl ?? 0;
-                const barH = maxMl > 0 ? (ml / maxMl) * barAreaHeight : 0;
-                const metGoal = day ? ml >= (day.goalMl ?? store.dailyGoalMl) : false;
-                return (
-                  <View key={label} style={styles.barColumn}>
-                    <View style={styles.barWrapper}>
-                      <View
-                        style={[
-                          styles.bar,
-                          {
-                            height: Math.max(barH, 4),
-                            backgroundColor: metGoal
-                              ? colors.success
-                              : colors.primary,
-                          },
-                        ]}
-                      />
-                    </View>
-                    <Text style={styles.barLabel}>{label}</Text>
-                  </View>
-                );
-              })}
-            </View>
+        <Animated.View entering={FadeInDown.duration(400)} style={s.chartCard}>
+          <Text style={s.chartTitle}>Veckans intag</Text>
+          <View style={s.barChart}>
+            {displayDays.map((day, i) => (
+              <AnimatedBar
+                key={i}
+                value={day.totalMl}
+                maxValue={demoMax}
+                index={i}
+                label={day.label}
+                goal={dailyGoal}
+                selected={selectedDay === i}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setSelectedDay(selectedDay === i ? null : i);
+                }}
+              />
+            ))}
           </View>
-        </View>
+          
+          <View style={[s.goalLine, { bottom: dailyGoal > 0 ? Math.max(4, (dailyGoal / demoMax) * 140) + 24 : 24 }]}>
+            <View style={s.goalDash} />
+            <Text style={s.goalText}>{dailyGoal} ml</Text>
+          </View>
+        </Animated.View>
 
         
-        <View style={styles.card}>
-          <View style={styles.statRow}>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{(weeklyTotal / 1000).toFixed(1)} L</Text>
-              <Text style={styles.statLabel}>Totalt denna vecka</Text>
+        {sel && (
+          <Animated.View entering={FadeInDown.duration(300)} style={s.dayDetailCard}>
+            <View style={s.dayDetailHeader}>
+              <Text style={s.dayDetailTitle}>{sel.label}</Text>
+              <TouchableOpacity onPress={() => setSelectedDay(null)} hitSlop={12}>
+                <Feather name="x" size={16} color={colors.textMuted} />
+              </TouchableOpacity>
             </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{Math.round(weeklyAvg)} ml</Text>
-              <Text style={styles.statLabel}>Genomsnitt per dag</Text>
+            <View style={s.dayDetailRow}>
+              <View style={s.dayDetailItem}>
+                <Text style={s.dayDetailValue}>{sel.totalMl} ml</Text>
+                <Text style={s.dayDetailLabel}>druckit</Text>
+              </View>
+              <View style={s.dayDetailItem}>
+                <Text style={s.dayDetailValue}>{dailyGoal > 0 ? Math.round((sel.totalMl / dailyGoal) * 100) : 0}%</Text>
+                <Text style={s.dayDetailLabel}>av mål</Text>
+              </View>
+              <View style={s.dayDetailItem}>
+                <Text style={[s.dayDetailValue, { color: sel.totalMl >= dailyGoal ? colors.success : colors.accent }]}>
+                  {sel.totalMl >= dailyGoal ? "Klart!" : `${dailyGoal - sel.totalMl} ml kvar`}
+                </Text>
+                <Text style={s.dayDetailLabel}>status</Text>
+              </View>
             </View>
-          </View>
-        </View>
+          </Animated.View>
+        )}
 
         
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Veckomål</Text>
-          <View style={styles.goalProgressRow}>
-            <Text style={styles.goalProgressText}>
-              {(weeklyTotal / 1000).toFixed(1)} / {(store.weeklyGoalMl / 1000).toFixed(1)} L
-            </Text>
-            <Text style={styles.goalProgressPct}>
-              {Math.round(weeklyProgress * 100)}%
-            </Text>
+        <Animated.View entering={FadeInDown.duration(400).delay(100)} style={s.statsRow}>
+          <View style={s.statBox}>
+            <Text style={s.statValue}>{(weekTotal / 1000).toFixed(1)}L</Text>
+            <Text style={s.statLabel}>totalt</Text>
           </View>
-          <View style={styles.progressBarBg}>
-            <View
-              style={[
-                styles.progressBarFill,
-                { width: `${Math.min(weeklyProgress * 100, 100)}%` },
-              ]}
-            />
+          <View style={s.statBox}>
+            <Text style={s.statValue}>{weekAvg} ml</Text>
+            <Text style={s.statLabel}>snitt/dag</Text>
           </View>
-        </View>
-      </Animated.View>
+          <View style={s.statBox}>
+            <Text style={s.statValue}>{store.weeklyGoalMl > 0 ? Math.round((weekTotal / store.weeklyGoalMl) * 100) : 0}%</Text>
+            <Text style={s.statLabel}>veckomål</Text>
+          </View>
+        </Animated.View>
+      </View>
     );
   }
 
   function ManadTab() {
-    const days = (monthlyStats as any)?.dailyBreakdown ?? [];
-    const totalMl = monthlyStats?.totalMl ?? 0;
-    const averageMl = (monthlyStats as any)?.averageDailyMl ?? 0;
-    const daysGoalMet = monthlyStats?.daysGoalMet ?? 0;
-    const monthlyProgress = store.getMonthlyProgress(totalMl);
+    const [selectedMonthDay, setSelectedMonthDay] = useState<number | null>(null);
+    const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+    const today = new Date().getDate();
 
-    const dayCount = days.length || 30;
+    const monthDays = isDemo ? demoMonthData : Array.from({ length: daysInMonth }, () => 0);
+
+    const monthTotal = monthDays.reduce((a, b) => a + b, 0);
+    const activeDays = monthDays.filter(d => d > 0).length;
+    const monthAvg = activeDays > 0 ? Math.round(monthTotal / activeDays) : 0;
 
     return (
-      <Animated.View entering={FadeInDown.duration(400).delay(100)}>
+      <View>
         
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Daglig översikt</Text>
-          <View style={styles.dayGrid}>
-            {Array.from({ length: dayCount }).map((_, i) => {
-              const day = days[i];
-              const ml = day?.totalMl ?? 0;
-              const goal = day?.goalMl ?? store.dailyGoalMl;
-              const pct = goal > 0 ? Math.min(ml / goal, 1) : 0;
-              const opacity = pct > 0 ? 0.15 + pct * 0.85 : 0;
+        <Animated.View entering={FadeInDown.duration(400)} style={s.chartCard}>
+          <Text style={s.chartTitle}>Månadsöversikt</Text>
+          <View style={s.dayGrid}>
+            {monthDays.map((ml, i) => {
+              const pct = dailyGoal > 0 ? ml / dailyGoal : 0;
+              const bg = ml === 0
+                ? colors.surface
+                : pct >= 1
+                  ? colors.success
+                  : pct >= 0.5
+                    ? colors.accent
+                    : colors.accent + "60";
+              const isToday = i + 1 === today;
+              const isSel = selectedMonthDay === i;
               return (
-                <View key={i} style={styles.dayCircleWrap}>
-                  <View
-                    style={[
-                      styles.dayCircle,
-                      {
-                        backgroundColor:
-                          pct > 0
-                            ? `rgba(59, 130, 246, ${opacity})`
-                            : colors.surface,
-                        borderWidth: pct >= 1 ? 2 : 0,
-                        borderColor: pct >= 1 ? colors.success : "transparent",
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.dayCircleText,
-                        {
-                          color:
-                            pct > 0.5
-                              ? "#FFFFFF"
-                              : colors.textMuted,
-                        },
-                      ]}
-                    >
-                      {i + 1}
-                    </Text>
+                <TouchableOpacity
+                  key={i}
+                  style={s.dayCell}
+                  onPress={() => {
+                    if (ml > 0) {
+                      Haptics.selectionAsync();
+                      setSelectedMonthDay(isSel ? null : i);
+                    }
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <View style={[s.dayDot, { backgroundColor: bg }, isToday && s.dayDotToday, isSel && { borderWidth: 2, borderColor: colors.textPrimary }]}>
+                    <Text style={s.dayNum}>{i + 1}</Text>
                   </View>
-                </View>
+                </TouchableOpacity>
               );
             })}
           </View>
+
           
-          <View style={styles.legendRow}>
-            <View style={styles.legendItem}>
-              <View
-                style={[styles.legendDot, { backgroundColor: "rgba(59, 130, 246, 0.2)" }]}
-              />
-              <Text style={styles.legendText}>Lite</Text>
+          {selectedMonthDay !== null && monthDays[selectedMonthDay] > 0 && (
+            <Animated.View entering={FadeInDown.duration(200)} style={s.dayDetailInline}>
+              <Text style={s.dayDetailInlineTitle}>
+                {selectedMonthDay + 1}/{new Date().getMonth() + 1}
+              </Text>
+              <Text style={s.dayDetailInlineValue}>{monthDays[selectedMonthDay]} ml</Text>
+              <Text style={s.dayDetailInlinePct}>
+                {Math.round((monthDays[selectedMonthDay] / dailyGoal) * 100)}% av mål
+              </Text>
+            </Animated.View>
+          )}
+
+          <View style={s.legendRow}>
+            <View style={s.legendItem}>
+              <View style={[s.legendDot, { backgroundColor: colors.success }]} />
+              <Text style={s.legendText}>Mål nått</Text>
             </View>
-            <View style={styles.legendItem}>
-              <View
-                style={[styles.legendDot, { backgroundColor: "rgba(59, 130, 246, 0.6)" }]}
-              />
-              <Text style={styles.legendText}>Halvvägs</Text>
+            <View style={s.legendItem}>
+              <View style={[s.legendDot, { backgroundColor: colors.accent }]} />
+              <Text style={s.legendText}>Delvis</Text>
             </View>
-            <View style={styles.legendItem}>
-              <View
-                style={[
-                  styles.legendDot,
-                  {
-                    backgroundColor: colors.primary,
-                    borderWidth: 2,
-                    borderColor: colors.success,
-                  },
-                ]}
-              />
-              <Text style={styles.legendText}>Mål nått</Text>
+            <View style={s.legendItem}>
+              <View style={[s.legendDot, { backgroundColor: colors.surface }]} />
+              <Text style={s.legendText}>Ingen data</Text>
             </View>
           </View>
-        </View>
+        </Animated.View>
 
         
-        <View style={styles.card}>
-          <View style={styles.statRow}>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{(totalMl / 1000).toFixed(1)} L</Text>
-              <Text style={styles.statLabel}>Totalt</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{Math.round(averageMl)} ml</Text>
-              <Text style={styles.statLabel}>Genomsnitt/dag</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{daysGoalMet}</Text>
-              <Text style={styles.statLabel}>Mål uppnått</Text>
-            </View>
+        <Animated.View entering={FadeInDown.duration(400).delay(100)} style={s.statsRow}>
+          <View style={s.statBox}>
+            <Text style={s.statValue}>{(monthTotal / 1000).toFixed(1)}L</Text>
+            <Text style={s.statLabel}>totalt</Text>
           </View>
-        </View>
-
-        
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Månadsmål</Text>
-          <View style={styles.goalProgressRow}>
-            <Text style={styles.goalProgressText}>
-              {(totalMl / 1000).toFixed(1)} / {(store.monthlyGoalMl / 1000).toFixed(1)} L
-            </Text>
-            <Text style={styles.goalProgressPct}>
-              {Math.round(monthlyProgress * 100)}%
-            </Text>
+          <View style={s.statBox}>
+            <Text style={s.statValue}>{monthAvg} ml</Text>
+            <Text style={s.statLabel}>snitt/dag</Text>
           </View>
-          <View style={styles.progressBarBg}>
-            <View
-              style={[
-                styles.progressBarFill,
-                { width: `${Math.min(monthlyProgress * 100, 100)}%` },
-              ]}
-            />
+          <View style={s.statBox}>
+            <Text style={s.statValue}>{activeDays}</Text>
+            <Text style={s.statLabel}>aktiva dagar</Text>
           </View>
-        </View>
-      </Animated.View>
-    );
-  }
-
-  function ArTab() {
-    const months = (yearStats as any)?.months ?? MONTH_LABELS.map((_, i) => ({ month: i + 1, totalMl: 0 }));
-    const maxMl = Math.max(1, ...months.map((m: any) => m.totalMl));
-    const barAreaHeight = 160;
-    const yearTotal = yearStats?.totalMl ?? 0;
-    const yearAvg = (yearStats as any)?.averageDailyMl ?? 0;
-
-    return (
-      <Animated.View entering={FadeInDown.duration(400).delay(100)}>
-        
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Årsöversikt {new Date().getFullYear()}</Text>
-          <View style={[styles.barChartContainer, { height: barAreaHeight + 32 }]}>
-            <View style={styles.barsRow}>
-              {MONTH_LABELS.map((label, i) => {
-                const month = months[i];
-                const ml = month?.totalMl ?? 0;
-                const barH = maxMl > 0 ? (ml / maxMl) * barAreaHeight : 0;
-                return (
-                  <View key={label} style={styles.barColumnNarrow}>
-                    <View style={[styles.barWrapper, { height: barAreaHeight }]}>
-                      <View
-                        style={[
-                          styles.bar,
-                          {
-                            height: Math.max(barH, 2),
-                            backgroundColor: colors.primary,
-                          },
-                        ]}
-                      />
-                    </View>
-                    <Text style={styles.barLabelSmall}>{label}</Text>
-                  </View>
-                );
-              })}
-            </View>
-          </View>
-        </View>
-
-        
-        <View style={styles.card}>
-          <View style={styles.statRow}>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{(yearTotal / 1000).toFixed(1)} L</Text>
-              <Text style={styles.statLabel}>Totalt i år</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{Math.round(yearAvg)} ml</Text>
-              <Text style={styles.statLabel}>Genomsnitt/dag</Text>
-            </View>
-          </View>
-        </View>
-      </Animated.View>
+        </Animated.View>
+      </View>
     );
   }
 
   function TotaltTab() {
-    const totalMl = allTimeStats?.totalMl ?? 0;
-    const totalDrinks = allTimeStats?.totalDrinks ?? 0;
-    const averageMl = (allTimeStats as any)?.averageDailyMl ?? 0;
-    const daysTracked = (allTimeStats as any)?.activeDays ?? 0;
-    const currentStreak = streakStats?.currentStreak ?? 0;
-    const longestStreak = streakStats?.longestStreak ?? 0;
-    const totalLiters = totalMl / 1000;
+    const totalMl = isDemo ? todayIntake : (allTimeStats?.totalMl ?? 0);
+    const totalDrinks = isDemo ? 1 : ((allTimeStats as any)?.totalDrinks ?? 0);
+    const avgDaily = isDemo ? todayIntake : ((allTimeStats as any)?.averageDailyMl ?? 0);
+    const daysTracked = isDemo ? 1 : ((allTimeStats as any)?.activeDays ?? 0);
+    const bestStreak = isDemo ? 0 : (streakStats?.longestStreak ?? 0);
 
-    const statCards: {
-      icon: React.ReactNode;
-      value: string;
-      label: string;
-    }[] = [
-      {
-        icon: <Ionicons name="water" size={22} color={colors.primary} />,
-        value: `${totalLiters.toFixed(1)} L`,
-        label: "Totalt druckit",
-      },
-      {
-        icon: <MaterialCommunityIcons name="cup-water" size={22} color={colors.primaryLight} />,
-        value: `${totalDrinks}`,
-        label: "Antal drycker",
-      },
-      {
-        icon: <Feather name="bar-chart-2" size={22} color={colors.waterMid} />,
-        value: `${Math.round(averageMl)} ml`,
-        label: "Genomsnitt per dag",
-      },
-      {
-        icon: <Feather name="calendar" size={22} color={colors.success} />,
-        value: `${daysTracked}`,
-        label: "Dagar spårade",
-      },
-      {
-        icon: <Ionicons name="flame" size={22} color="#F59E0B" />,
-        value: `${longestStreak}`,
-        label: "Bästa streak",
-      },
-      {
-        icon: <Ionicons name="flame-outline" size={22} color="#FB923C" />,
-        value: `${currentStreak}`,
-        label: "Nuvarande streak",
-      },
+    const MILESTONES = [
+      { threshold: 10000, label: "10 liter" },
+      { threshold: 50000, label: "50 liter" },
+      { threshold: 100000, label: "100 liter" },
+      { threshold: 500000, label: "500 liter" },
+      { threshold: 1000000, label: "1 000 liter" },
     ];
 
     return (
-      <Animated.View entering={FadeInDown.duration(400).delay(100)}>
+      <View>
         
-        <View style={styles.statsGrid}>
-          {statCards.map((card, i) => (
-            <View key={i} style={styles.statCard}>
-              <View style={styles.statCardIcon}>{card.icon}</View>
-              <Text style={styles.statCardValue}>{card.value}</Text>
-              <Text style={styles.statCardLabel}>{card.label}</Text>
+        <Animated.View entering={FadeInDown.duration(400)} style={s.statsRow}>
+          <View style={s.statBox}>
+            <Ionicons name="water" size={20} color={colors.accent} />
+            <Text style={s.statValue}>{(totalMl / 1000).toFixed(1)}L</Text>
+            <Text style={s.statLabel}>totalt</Text>
+          </View>
+          <View style={s.statBox}>
+            <Feather name="calendar" size={20} color={colors.accent} />
+            <Text style={s.statValue}>{daysTracked}</Text>
+            <Text style={s.statLabel}>dagar</Text>
+          </View>
+          <View style={s.statBox}>
+            <Feather name="trending-up" size={20} color={colors.accent} />
+            <Text style={s.statValue}>{avgDaily} ml</Text>
+            <Text style={s.statLabel}>snitt/dag</Text>
+          </View>
+        </Animated.View>
+
+        {bestStreak > 0 && (
+          <Animated.View entering={FadeInDown.duration(400).delay(100)} style={s.streakCard}>
+            <Ionicons name="trophy" size={24} color={colors.warning} />
+            <View style={{ marginLeft: 12 }}>
+              <Text style={s.streakValue}>Bästa streak: {bestStreak} dagar</Text>
+              <Text style={s.streakLabel}>Nuvarande: {streak} dagar</Text>
             </View>
-          ))}
-        </View>
+          </Animated.View>
+        )}
 
         
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Milstolpar</Text>
+        <Animated.View entering={FadeInDown.duration(400).delay(200)} style={s.chartCard}>
+          <Text style={s.chartTitle}>Milstolpar</Text>
           {MILESTONES.map((ms, i) => {
-            const achieved = totalLiters >= ms.threshold;
+            const reached = totalMl >= ms.threshold;
+            const progress = Math.min(1, totalMl / ms.threshold);
             return (
-              <View
-                key={i}
-                style={[
-                  styles.milestoneRow,
-                  i < MILESTONES.length - 1 && styles.milestoneBorder,
-                ]}
-              >
-                <View
-                  style={[
-                    styles.milestoneIcon,
-                    {
-                      backgroundColor: achieved
-                        ? "rgba(16, 185, 129, 0.15)"
-                        : colors.surface,
-                    },
-                  ]}
-                >
-                  {achieved ? (
-                    <Feather name="award" size={20} color={colors.success} />
-                  ) : (
-                    <Feather name="lock" size={18} color={colors.textMuted} />
-                  )}
-                </View>
-                <Text
-                  style={[
-                    styles.milestoneLabel,
-                    {
-                      color: achieved
-                        ? colors.textPrimary
-                        : colors.textMuted,
-                    },
-                  ]}
-                >
+              <View key={i} style={s.milestoneRow}>
+                <Feather
+                  name={reached ? "check-circle" : "circle"}
+                  size={18}
+                  color={reached ? colors.success : colors.textMuted}
+                />
+                <Text style={[s.milestoneLabel, reached && { color: colors.success }]}>
                   {ms.label}
                 </Text>
-                {achieved && (
-                  <Feather name="check-circle" size={18} color={colors.success} />
-                )}
+                <View style={s.milestoneBar}>
+                  <View style={[s.milestoneFill, { width: `${progress * 100}%`, backgroundColor: reached ? colors.success : colors.accent }]} />
+                </View>
               </View>
             );
           })}
-        </View>
-      </Animated.View>
+        </Animated.View>
+      </View>
     );
   }
 
-  function renderTabContent() {
-    switch (activeTab) {
-      case "vecka":
-        return <VeckaTab />;
-      case "manad":
-        return <ManadTab />;
-      case "ar":
-        return <ArTab />;
-      case "totalt":
-        return <TotaltTab />;
-    }
-  }
-
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
+    <SafeAreaView style={s.container} edges={["top"]}>
+      <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent} showsVerticalScrollIndicator={false}>
         
-        <Animated.View
-          entering={FadeInDown.duration(400).delay(50)}
-          style={styles.header}
-        >
-          <Text style={typography.header}>Statistik</Text>
+        <Animated.View entering={FadeInDown.duration(300)} style={s.header}>
+          <Text style={s.pageTitle}>Statistik</Text>
+          {isDemo && (
+            <View style={s.demoBadge}>
+              <Feather name="play-circle" size={12} color={colors.warning} />
+              <Text style={s.demoBadgeText}>Demo</Text>
+            </View>
+          )}
         </Animated.View>
 
         
-        <Animated.View
-          entering={FadeInDown.duration(400).delay(80)}
-          style={styles.tabRow}
-        >
+        <View style={s.tabRow}>
           {TABS.map((tab) => {
-            const isActive = activeTab === tab.key;
+            const active = activeTab === tab.key;
             return (
               <TouchableOpacity
                 key={tab.key}
-                style={[
-                  styles.tabButton,
-                  isActive && styles.tabButtonActive,
-                ]}
-                onPress={() => setActiveTab(tab.key)}
+                style={[s.tab, active && s.tabActive]}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setActiveTab(tab.key);
+                }}
                 activeOpacity={0.7}
               >
-                <Text
-                  style={[
-                    styles.tabButtonText,
-                    isActive && styles.tabButtonTextActive,
-                  ]}
-                >
-                  {tab.label}
-                </Text>
+                <Text style={[s.tabText, active && s.tabTextActive]}>{tab.label}</Text>
               </TouchableOpacity>
             );
           })}
-        </Animated.View>
+        </View>
 
         
-        {renderTabContent()}
+        {activeTab === "idag" && <IdagTab />}
+        {activeTab === "vecka" && <VeckaTab />}
+        {activeTab === "manad" && <ManadTab />}
+        {activeTab === "totalt" && <TotaltTab />}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 100,
-  },
+const s = StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
+  scroll: { flex: 1 },
+  scrollContent: { paddingBottom: 40 },
 
-  header: {
-    paddingHorizontal: spacing.page,
-    paddingTop: 16,
-    paddingBottom: 8,
-  },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.page, paddingTop: 8, paddingBottom: 12 },
+  pageTitle: { ...typography.header },
+  demoBadge: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: colors.warningMuted, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  demoBadgeText: { fontSize: 11, fontWeight: "600", color: colors.warning },
 
-  tabRow: {
-    flexDirection: "row",
-    marginHorizontal: spacing.page,
-    marginBottom: spacing.sectionGap,
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: 4,
-  },
-  tabButton: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 10,
-    alignItems: "center",
-  },
-  tabButtonActive: {
-    backgroundColor: colors.primary,
-  },
-  tabButtonText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: colors.textMuted,
-  },
-  tabButtonTextActive: {
-    color: "#FFFFFF",
-  },
+  tabRow: { flexDirection: "row", marginHorizontal: spacing.page, marginBottom: 20, backgroundColor: colors.surface, borderRadius: 12, padding: 3 },
+  tab: { flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: "center" },
+  tabActive: { backgroundColor: colors.accent },
+  tabText: { fontSize: 13, fontWeight: "600", color: colors.textMuted },
+  tabTextActive: { color: "#FFF" },
 
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: spacing.cardRadius,
-    padding: spacing.cardPadding,
-    marginHorizontal: spacing.page,
-    marginBottom: spacing.sectionGap,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  cardTitle: {
-    ...typography.title,
-    fontSize: 17,
-    fontWeight: "700",
-    marginBottom: 16,
-  },
+  todayHero: { alignItems: "center", paddingVertical: 24, marginHorizontal: spacing.page },
+  todayPct: { fontSize: 64, fontWeight: "800", color: colors.textPrimary, letterSpacing: -3 },
+  todayLabel: { fontSize: 15, color: colors.textSecondary, marginTop: -4 },
+  todayBar: { width: "100%", height: 8, backgroundColor: colors.surface, borderRadius: 4, marginTop: 16, overflow: "hidden" },
+  todayBarFill: { height: "100%", backgroundColor: colors.accent, borderRadius: 4 },
 
-  ringContainer: {
-    position: "relative",
-  },
-  ringDot: {
-    position: "absolute",
-  },
-  ringCenter: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  ringWrapper: {
-    alignItems: "center",
-    paddingVertical: 16,
-  },
+  statsRow: { flexDirection: "row", marginHorizontal: spacing.page, marginBottom: 16, gap: 10 },
+  statBox: { flex: 1, backgroundColor: colors.surface, borderRadius: 14, padding: 14, alignItems: "center", borderWidth: 1, borderColor: colors.border },
+  statValue: { fontSize: 18, fontWeight: "800", color: colors.textPrimary, marginTop: 6 },
+  statLabel: { fontSize: 11, color: colors.textMuted, marginTop: 2 },
 
-  mlText: {
-    textAlign: "center",
-    fontSize: 18,
-    fontWeight: "700",
-    color: colors.textPrimary,
-    marginTop: 8,
-  },
-  drinkCountRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 8,
-    gap: 6,
-  },
-  drinkCountText: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: colors.textSecondary,
-  },
+  streakCard: { flexDirection: "row", alignItems: "center", marginHorizontal: spacing.page, marginBottom: 16, backgroundColor: colors.warningMuted, borderRadius: 14, padding: 16 },
+  streakValue: { fontSize: 16, fontWeight: "700", color: colors.warning },
+  streakLabel: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
 
-  streakRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 14,
-  },
-  streakIconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: "rgba(245, 158, 11, 0.12)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  streakTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: colors.textPrimary,
-  },
-  streakSubtitle: {
-    fontSize: 13,
-    fontWeight: "500",
-    color: colors.textMuted,
-    marginTop: 2,
-  },
+  demoTag: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, marginHorizontal: spacing.page, paddingVertical: 8, marginBottom: 16 },
+  demoTagText: { fontSize: 12, fontWeight: "500", color: colors.warning },
 
-  barChartContainer: {
-    height: 192,
-    position: "relative",
-  },
-  goalLine: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    height: 1,
-    borderTopWidth: 1,
-    borderTopColor: colors.textMuted,
-  },
-  goalLineLabel: {
-    position: "absolute",
-    right: 0,
-    fontSize: 10,
-    fontWeight: "600",
-    color: colors.textMuted,
-  },
-  barsRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    flex: 1,
-    gap: 4,
-    paddingBottom: 24,
-  },
-  barColumn: {
-    flex: 1,
-    alignItems: "center",
-  },
-  barColumnNarrow: {
-    flex: 1,
-    alignItems: "center",
-  },
-  barWrapper: {
-    flex: 1,
-    width: "100%",
-    justifyContent: "flex-end",
-    alignItems: "center",
-  },
-  bar: {
-    width: "65%",
-    borderRadius: 4,
-    minHeight: 2,
-  },
-  barLabel: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: colors.textMuted,
-    marginTop: 6,
-  },
-  barLabelSmall: {
-    fontSize: 9,
-    fontWeight: "600",
-    color: colors.textMuted,
-    marginTop: 6,
-  },
+  chartCard: { marginHorizontal: spacing.page, marginBottom: 16, backgroundColor: colors.surface, borderRadius: 14, padding: 16, borderWidth: 1, borderColor: colors.border },
+  chartTitle: { fontSize: 15, fontWeight: "700", color: colors.textPrimary, marginBottom: 16 },
 
-  statRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  statItem: {
-    flex: 1,
-    alignItems: "center",
-  },
-  statValue: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: colors.primary,
-  },
-  statLabel: {
-    fontSize: 11,
-    fontWeight: "500",
-    color: colors.textMuted,
-    marginTop: 4,
-    textAlign: "center",
-  },
-  statDivider: {
-    width: 1,
-    height: 36,
-    backgroundColor: colors.border,
-  },
+  barChart: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", height: 160, paddingTop: 20 },
+  barCol: { flex: 1, alignItems: "center" },
+  barTrack: { width: "65%", height: 140, justifyContent: "flex-end", alignItems: "center" },
+  bar: { width: "100%", borderRadius: 6, minHeight: 4 },
+  barLabel: { fontSize: 11, color: colors.textMuted, marginTop: 6 },
+  goalLine: { position: "absolute", left: 16, right: 16, flexDirection: "row", alignItems: "center" },
+  goalDash: { flex: 1, height: 1, backgroundColor: colors.textMuted, opacity: 0.3 },
+  goalText: { fontSize: 10, color: colors.textMuted, marginLeft: 6 },
 
-  goalProgressRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 10,
-  },
-  goalProgressText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: colors.textPrimary,
-  },
-  goalProgressPct: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: colors.primary,
-  },
-  progressBarBg: {
-    height: 8,
-    backgroundColor: colors.surface,
-    borderRadius: 4,
-    overflow: "hidden",
-  },
-  progressBarFill: {
-    height: 8,
-    backgroundColor: colors.primary,
-    borderRadius: 4,
-  },
+  dayGrid: { flexDirection: "row", flexWrap: "wrap", gap: 4 },
+  dayCell: { width: (SW - spacing.page * 2 - 32 - 4 * 6) / 7 },
+  dayDot: { aspectRatio: 1, borderRadius: 8, alignItems: "center", justifyContent: "center" },
+  dayDotToday: { borderWidth: 2, borderColor: colors.accent },
+  dayNum: { fontSize: 10, fontWeight: "600", color: colors.textPrimary },
+  legendRow: { flexDirection: "row", marginTop: 12, gap: 16 },
+  legendItem: { flexDirection: "row", alignItems: "center", gap: 4 },
+  legendDot: { width: 8, height: 8, borderRadius: 4 },
+  legendText: { fontSize: 11, color: colors.textMuted },
 
-  dayGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-    justifyContent: "flex-start",
-  },
-  dayCircleWrap: {
-    width: (SCREEN_WIDTH - spacing.page * 2 - spacing.cardPadding * 2 - 6 * 6) / 7,
-    aspectRatio: 1,
-  },
-  dayCircle: {
-    flex: 1,
-    borderRadius: 100,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  dayCircleText: {
-    fontSize: 11,
-    fontWeight: "600",
-  },
-  legendRow: {
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: 16,
-    marginTop: 16,
-  },
-  legendItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  legendDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-  },
-  legendText: {
-    fontSize: 11,
-    fontWeight: "500",
-    color: colors.textMuted,
-  },
+  barTooltip: { alignItems: "center", marginBottom: 4 },
+  barTooltipText: { fontSize: 13, fontWeight: "800", color: colors.textPrimary },
+  barTooltipUnit: { fontSize: 9, fontWeight: "500", color: colors.textMuted, marginTop: -2 },
+  barLabelSel: { color: colors.accent, fontWeight: "700" },
 
-  statsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    paddingHorizontal: spacing.page,
-    gap: spacing.itemGap,
-    marginBottom: spacing.sectionGap,
-  },
-  statCard: {
-    width: (SCREEN_WIDTH - spacing.page * 2 - spacing.itemGap) / 2,
-    backgroundColor: colors.surface,
-    borderRadius: spacing.cardRadius,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  statCardIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.surface,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 12,
-  },
-  statCardValue: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: colors.textPrimary,
-  },
-  statCardLabel: {
-    fontSize: 12,
-    fontWeight: "500",
-    color: colors.textMuted,
-    marginTop: 4,
-  },
+  dayDetailCard: { marginHorizontal: spacing.page, marginBottom: 16, backgroundColor: colors.surface, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: colors.border },
+  dayDetailHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
+  dayDetailTitle: { fontSize: 16, fontWeight: "700", color: colors.textPrimary },
+  dayDetailRow: { flexDirection: "row", gap: 10 },
+  dayDetailItem: { flex: 1, alignItems: "center" },
+  dayDetailValue: { fontSize: 16, fontWeight: "800", color: colors.textPrimary },
+  dayDetailLabel: { fontSize: 11, color: colors.textMuted, marginTop: 2 },
 
-  milestoneRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 12,
-    gap: 12,
-  },
-  milestoneBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  milestoneIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  milestoneLabel: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: "600",
-  },
+  dayDetailInline: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: colors.background, borderRadius: 10, padding: 10, marginTop: 12 },
+  dayDetailInlineTitle: { fontSize: 14, fontWeight: "700", color: colors.textPrimary },
+  dayDetailInlineValue: { fontSize: 16, fontWeight: "800", color: colors.accent },
+  dayDetailInlinePct: { fontSize: 12, color: colors.textMuted },
+
+  milestoneRow: { flexDirection: "row", alignItems: "center", paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border },
+  milestoneLabel: { flex: 1, fontSize: 14, fontWeight: "500", color: colors.textSecondary, marginLeft: 10 },
+  milestoneBar: { width: 60, height: 4, backgroundColor: colors.surface, borderRadius: 2, overflow: "hidden" },
+  milestoneFill: { height: "100%", borderRadius: 2 },
 });

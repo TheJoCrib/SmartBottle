@@ -161,6 +161,7 @@ export default function GoalOnboarding() {
               value={manualGoal}
               onChangeText={setManualGoal}
               keyboardType="number-pad"
+              returnKeyType="done"
             />
           </Animated.View>
         )}

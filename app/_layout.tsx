@@ -9,6 +9,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
 import { useAuthStore } from "../stores/authStore";
 import { useHydrationStore } from "../stores/hydrationStore";
+import { useDemoStore } from "../stores/demoStore";
 import { offlineService } from "../services/offline";
 import { colors } from "../constants/theme";
 
@@ -22,20 +23,30 @@ const headerStyle = { backgroundColor: colors.background };
 
 export default function RootLayout() {
   const { loadToken, isLoading: authLoading } = useAuthStore();
-  const { loadState, isLoaded: hydrationLoaded } = useHydrationStore();
+  const hydrationStore = useHydrationStore();
+  const demoStore = useDemoStore();
 
   useEffect(() => {
     offlineService.init(convex);
     loadToken();
-    loadState();
+    hydrationStore.loadState();
     return () => offlineService.cleanup();
   }, []);
 
   useEffect(() => {
-    if (!authLoading && hydrationLoaded) {
+    if (hydrationStore.isLoaded && hydrationStore.demoMode) {
+      const cap = Math.round(hydrationStore.dailyGoalMl * 0.4 / 50) * 50 || 1000;
+      const emptyW = hydrationStore.emptyWeightG > 0 ? hydrationStore.emptyWeightG : 200;
+      const fullW = hydrationStore.fullWeightG > 0 ? hydrationStore.fullWeightG : emptyW + cap;
+      demoStore.startSimulation(fullW, emptyW);
+    }
+  }, [hydrationStore.isLoaded]);
+
+  useEffect(() => {
+    if (!authLoading && hydrationStore.isLoaded) {
       SplashScreen.hideAsync();
     }
-  }, [authLoading, hydrationLoaded]);
+  }, [authLoading, hydrationStore.isLoaded]);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

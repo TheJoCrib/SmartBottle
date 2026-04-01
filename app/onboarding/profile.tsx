@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { View, Text, TextInput, TouchableOpacity, Alert, StyleSheet } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, Alert, StyleSheet, ScrollView, Keyboard } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { useMutation, useQuery } from "convex/react";
@@ -78,7 +78,12 @@ export default function ProfileStep() {
         </View>
       )}
 
-      <View style={styles.content}>
+      <ScrollView
+        style={styles.content}
+        contentContainerStyle={styles.contentInner}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
         <Animated.View entering={FadeInDown.duration(400)}>
           <Text style={styles.title}>{isEditing ? "Redigera profil" : "Om dig"}</Text>
           <Text style={styles.subtitle}>Steg 1 av 4</Text>
@@ -111,22 +116,25 @@ export default function ProfileStep() {
             <View style={styles.metricField}>
               <Text style={styles.label}>ÅLDER</Text>
               <TextInput style={styles.metricInput} value={age} onChangeText={setAge}
-                keyboardType="number-pad" placeholder="25" placeholderTextColor={colors.textMuted} />
+                keyboardType="number-pad" returnKeyType="done" onSubmitEditing={() => Keyboard.dismiss()}
+                placeholder="25" placeholderTextColor={colors.textMuted} />
             </View>
             <View style={styles.metricField}>
               <Text style={styles.label}>LÄNGD (CM)</Text>
               <TextInput style={styles.metricInput} value={height} onChangeText={setHeight}
-                keyboardType="decimal-pad" placeholder="175" placeholderTextColor={colors.textMuted} />
+                keyboardType="decimal-pad" returnKeyType="done" onSubmitEditing={() => Keyboard.dismiss()}
+                placeholder="175" placeholderTextColor={colors.textMuted} />
             </View>
             <View style={styles.metricField}>
               <Text style={styles.label}>VIKT (KG)</Text>
               <TextInput style={styles.metricInput} value={weight} onChangeText={setWeight}
-                keyboardType="decimal-pad" placeholder="70" placeholderTextColor={colors.textMuted} />
+                keyboardType="decimal-pad" returnKeyType="done" onSubmitEditing={() => Keyboard.dismiss()}
+                placeholder="70" placeholderTextColor={colors.textMuted} />
             </View>
           </View>
         </Animated.View>
 
-        <View style={{ flex: 1 }} />
+        <View style={{ height: 24 }} />
 
         
         <Animated.View entering={FadeInDown.duration(400).delay(300)}>
@@ -140,7 +148,7 @@ export default function ProfileStep() {
             <Feather name="arrow-right" size={20} color="#FFF" />
           </TouchableOpacity>
         </Animated.View>
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -149,7 +157,8 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   editHeader: { paddingHorizontal: spacing.page, paddingTop: 12 },
   closeBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
-  content: { flex: 1, paddingHorizontal: spacing.page, paddingTop: 24, paddingBottom: 24 },
+  content: { flex: 1 },
+  contentInner: { paddingHorizontal: spacing.page, paddingTop: 24, paddingBottom: 40 },
   title: { ...typography.header, marginBottom: 4 },
   subtitle: { fontSize: 14, color: colors.textMuted, marginBottom: 28 },
   label: { fontSize: 12, fontWeight: "700", color: colors.textMuted, letterSpacing: 0.5, marginBottom: 8, marginTop: 20 },

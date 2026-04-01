@@ -46,6 +46,7 @@ interface HydrationState extends PersistedState {
 
   addIntake: (ml: number) => Promise<void>;
   resetDailyIntake: () => Promise<void>;
+  resetAll: () => Promise<void>;
 
   setSimulatedWeight: (weight: number) => void;
   refillBottle: () => void;
@@ -172,6 +173,27 @@ export const useHydrationStore = create<HydrationState>((set, get) => ({
   resetDailyIntake: async () => {
     set({ todayIntakeMl: 0 });
     await persist(getPersistedFields(get()));
+  },
+
+  resetAll: async () => {
+    set({
+      activeBottleId: null,
+      activeBottleModelId: "water-bottle",
+      fullWeightG: 0,
+      emptyWeightG: 0,
+      isCalibrated: false,
+      dailyGoalMl: 2500,
+      weeklyGoalMl: 17500,
+      monthlyGoalMl: 75000,
+      todayIntakeMl: 0,
+      lastResetDate: todayDateString(),
+      remindersEnabled: true,
+      reminderIntervalHours: 2,
+      demoMode: false,
+      simulatedWeightG: null,
+      previousWeightG: null,
+    });
+    await AsyncStorage.removeItem(STORE_KEY);
   },
 
   setSimulatedWeight: (weight: number) => {
