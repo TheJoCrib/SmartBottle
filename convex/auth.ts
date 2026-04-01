@@ -220,3 +220,91 @@ export const getRecommendedIntake = query({
     return calculateRecommendedIntake(args.weight, args.activityLevel);
   },
 });
+
+export const deleteAccount = mutation({
+  args: { token: v.string() },
+  handler: async (ctx, args) => {
+    const session = await ctx.db
+      .query("sessions")
+      .withIndex("by_token", (q) => q.eq("token", args.token))
+      .first();
+    if (!session) throw new Error("Invalid session");
+
+    const userId = session.userId;
+
+    const sessions = await ctx.db
+      .query("sessions")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect();
+    for (const s of sessions) {
+      await ctx.db.delete(s._id);
+    }
+
+    const bottles = await ctx.db
+      .query("bottles")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect();
+    for (const b of bottles) {
+      await ctx.db.delete(b._id);
+    }
+
+    const drinkLogs = await ctx.db
+      .query("drinkLogs")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect();
+    for (const d of drinkLogs) {
+      await ctx.db.delete(d._id);
+    }
+
+    const userAchievements = await ctx.db
+      .query("userAchievements")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect();
+    for (const ua of userAchievements) {
+      await ctx.db.delete(ua._id);
+    }
+
+    const streaks = await ctx.db
+      .query("streaks")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect();
+    for (const s of streaks) {
+      await ctx.db.delete(s._id);
+    }
+
+    const friendships1 = await ctx.db
+      .query("friendships")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect();
+    for (const f of friendships1) {
+      await ctx.db.delete(f._id);
+    }
+    const friendships2 = await ctx.db
+      .query("friendships")
+      .withIndex("by_friend", (q) => q.eq("friendId", userId))
+      .collect();
+    for (const f of friendships2) {
+      await ctx.db.delete(f._id);
+    }
+
+    const challengeProgress = await ctx.db
+      .query("challengeProgress")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect();
+    for (const cp of challengeProgress) {
+      await ctx.db.delete(cp._id);
+    }
+
+    const beverageTypes = await ctx.db
+      .query("beverageTypes")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect();
+    for (const bt of beverageTypes) {
+      await ctx.db.delete(bt._id);
+    }
+
+    await ctx.db.delete(userId);
+
+    return { success: true };
+  },
+});

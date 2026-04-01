@@ -9,7 +9,6 @@ import Animated, {
   withTiming,
   withDelay,
   withSequence,
-  FadeIn,
   Easing,
 } from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
@@ -33,7 +32,10 @@ export default function Index() {
       withTiming(1, { duration: 200 })
     );
     titleOpacity.value = withDelay(300, withTiming(1, { duration: 500 }));
-    titleTranslateY.value = withDelay(300, withTiming(0, { duration: 500, easing: Easing.out(Easing.cubic) }));
+    titleTranslateY.value = withDelay(
+      300,
+      withTiming(0, { duration: 500, easing: Easing.out(Easing.cubic) })
+    );
     subtitleOpacity.value = withDelay(600, withTiming(1, { duration: 400 }));
   }, []);
 
@@ -60,14 +62,12 @@ export default function Index() {
         style={styles.splashContainer}
       >
         <StatusBar style="light" />
-        <Animated.View style={[styles.dropContainer, dropStyle]}>
+        <Animated.View style={dropStyle}>
           <Ionicons name="water" size={56} color="rgba(255,255,255,0.95)" />
         </Animated.View>
-
         <Animated.Text style={[styles.splashTitle, titleStyle]}>
-          V{"\u00e4"}tskebalans
+          Vätskebalans
         </Animated.Text>
-
         <Animated.Text style={[styles.splashSubtitle, subtitleStyle]}>
           Din smarta flaska
         </Animated.Text>
@@ -88,14 +88,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  dropContainer: {
-    marginBottom: 16,
-  },
   splashTitle: {
     fontSize: 34,
     fontWeight: "800",
     color: "#FFFFFF",
     letterSpacing: -0.5,
+    marginTop: 16,
   },
   splashSubtitle: {
     fontSize: 16,

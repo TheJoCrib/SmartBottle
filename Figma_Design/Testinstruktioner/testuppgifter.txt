@@ -1,37 +1,35 @@
 TESTUPPGIFTER - Vätskebalans
 
-Projekt: Vätskebalans (Smart Bottle)
+Projekt: Vätskebalans
 Datum:
 Testperson:
 
-Gör uppgifterna i ordning. Försök lösa allt på egen hand utan hjälp.
-Skriv vad du tycker efter varje uppgift och ge betyg 1-5.
+1. Öppna appen.
 
-1. Öppna appen. Beskriv vad du ser och vad du tror appen handlar om.
+2. Skapa ett konto om du inte redan har ett. Har du ett konto, logga in.
 
-2. Kolla runt på startsidan. Vad kan du göra härifrån?
+3. Fyll i din profil med dina uppgifter.
 
-3. Kalibrera din flaska. Tänk att den väger 350g tom och 850g full.
+4. När du kommit till startsidan, kolla runt. Vad ser du?
 
-4. Beskriv vad som förändrats på startsidan efter kalibreringen.
+5. Kalibrera din flaska. Ange X gram tom och X gram full.
 
-5. Simulera att du dricker vatten. Beskriv vad som händer.
+6. Dra i slidern för att simulera att du dricker vatten. Vad händer?
 
-6. Hitta var du ändrar ditt dagliga mål och sätt det till 3000 ml.
+7. Fyll på flaskan igen.
 
-7. Slå på påminnelser och skicka en testnotis till dig själv.
+8. Gå till inställningar och ändra ditt dagsmål till 3000 ml.
 
-8. Gå tillbaka och fyll på flaskan. Beskriv vad som händer.
+9. Slå på påminnelser och skicka en testnotis.
 
-9. Nollställ dagens vätskeintag.
+10. Nollställ dagens vätskeintag.
 
-10. Kalibrera om flaskan med nya vikter: 300g tom, 780g full.
+11. Kalibrera om flaskan med nya vikter: 200g tom, 700g full.
 
-Avslutande frågor:
+12. Gå tillbaka till startsidan och drick tills flaskan är nästan tom. Vad visar appen?
 
-- Vad tyckte du om appen överlag?
-- Något som var extra bra?
-- Något som var förvirrande eller irriterande?
-- Skulle du använda appen på riktigt?
+Skriv ner efter varje uppgift:
+- Gick det bra? Vad var svårt?
+- Betyg 1-5 (1 = dåligt, 5 = bra)
 
 Tack för att du testade!

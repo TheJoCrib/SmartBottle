@@ -89,7 +89,7 @@ export function CalibrationModal({
             
             <Text style={styles.title}>Kalibrera flaska</Text>
             <Text style={styles.description}>
-              L\u00e5t modulen v\u00e4ga din flaska n\u00e4r den \u00e4r helt full respektive helt tom f\u00f6r att automatiskt r\u00e4kna ut volymen. (1g = 1ml)
+              Låt modulen väga din flaska när den är helt full respektive helt tom för att automatiskt räkna ut volymen. (1g = 1ml)
             </Text>
 
             

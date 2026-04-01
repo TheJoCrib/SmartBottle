@@ -81,7 +81,8 @@
           ],
           "bluetoothAlwaysPermission": "SmartBottle needs Bluetooth to connect to your smart water bottle."
         }
-      ]
+      ],
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true

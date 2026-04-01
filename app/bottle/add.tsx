@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   View,
   Text,
@@ -7,45 +7,43 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  StyleSheet,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { useMutation } from "convex/react";
+import * as Haptics from "expo-haptics";
+import Animated, { FadeInDown } from "react-native-reanimated";
 import { api } from "../../convex/_generated/api";
 import { useAuthStore } from "../../stores/authStore";
 import { bluetoothService, Device } from "../../services/bluetooth";
-import { Ionicons } from "@expo/vector-icons";
+import { Feather } from "@expo/vector-icons";
+import { BOTTLE_MODELS } from "../../constants/bottleModels";
+import { BottleIcon } from "../../components/BottleIcons";
+import { colors, spacing } from "../../constants/theme";
 
-const BOTTLE_ICONS = ["🍶", "🫗", "🧴", "🥤", "🍼", "🏺", "🪣", "💧"];
 const BOTTLE_COLORS = [
-  "#0EA5E9",
-  "#10B981",
-  "#F59E0B",
-  "#EF4444",
-  "#8B5CF6",
-  "#EC4899",
-  "#06B6D4",
-  "#64748B",
+  "#3B82F6", "#10B981", "#F59E0B", "#EF4444",
+  "#8B5CF6", "#EC4899", "#06B6D4", "#64748B",
 ];
-const PRESET_CAPACITIES = [250, 350, 500, 750, 1000, 1500, 2000];
 
 export default function AddBottle() {
   const { token } = useAuthStore();
   const createBottle = useMutation(api.bottles.create);
 
   const [name, setName] = useState("");
-  const [icon, setIcon] = useState(BOTTLE_ICONS[0]);
   const [color, setColor] = useState(BOTTLE_COLORS[0]);
-  const [capacity, setCapacity] = useState("500");
+  const [modelId, setModelId] = useState("water-bottle");
   const [isScanning, setIsScanning] = useState(false);
   const [devices, setDevices] = useState<Device[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
+  const selectedModel = BOTTLE_MODELS.find((m) => m.id === modelId) || BOTTLE_MODELS[0];
+
   const handleScan = async () => {
     setIsScanning(true);
     setDevices([]);
-
     try {
       await bluetoothService.scanForDevices((device) => {
         setDevices((prev) => {
@@ -54,7 +52,7 @@ export default function AddBottle() {
         });
       }, 10000);
     } catch (error: any) {
-      Alert.alert("Scan Error", error.message);
+      Alert.alert("Sökfel", error.message);
     } finally {
       setIsScanning(false);
     }
@@ -66,231 +64,369 @@ export default function AddBottle() {
   };
 
   const handleCreate = async () => {
-    if (!token || !name) {
-      Alert.alert("Error", "Please enter a bottle name");
+    if (!token || !name.trim()) {
+      Alert.alert("Fel", "Ange ett namn för flaskan");
       return;
     }
-
-    const capacityMl = parseInt(capacity);
-    if (isNaN(capacityMl) || capacityMl <= 0) {
-      Alert.alert("Error", "Please enter a valid capacity");
-      return;
-    }
-
     setIsLoading(true);
     try {
       await createBottle({
         token,
-        name,
-        icon,
+        name: name.trim(),
+        icon: selectedModel.iconName,
         color,
-        capacityMl,
-        emptyWeightG: 100,
-        fullWeightG: 100 + capacityMl,
+        capacityMl: 0,
+        emptyWeightG: 0,
+        fullWeightG: 0,
         bleDeviceId: selectedDevice?.id,
       });
-
-      if (selectedDevice) {
-        router.replace("/bottle/calibrate");
-      } else {
-        router.back();
-      }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      router.replace("/bottle/calibrate");
     } catch (error: any) {
-      Alert.alert("Error", error.message || "Failed to create bottle");
+      Alert.alert("Fel", error.message || "Kunde inte skapa flaskan");
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-background-light dark:bg-background-dark" edges={["bottom"]}>
-      <ScrollView className="flex-1 px-6" showsVerticalScrollIndicator={false}>
+    <SafeAreaView style={styles.container} edges={["bottom"]}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
         
-        <View className="pt-4 pb-4">
-          <Text className="text-sm font-medium text-text-light-secondary dark:text-text-dark-secondary mb-2">
-            Bottle Name
-          </Text>
+        <Animated.View entering={FadeInDown.duration(300).delay(50)} style={styles.card}>
+          <Text style={styles.cardLabel}>NAMN</Text>
           <TextInput
-            className="bg-surface-light dark:bg-surface-dark border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-4 text-text-light-primary dark:text-text-dark-primary"
-            placeholder="My Water Bottle"
-            placeholderTextColor="#94A3B8"
+            style={styles.nameInput}
+            placeholder="T.ex. Jobbet, Gymmet, Hemma..."
+            placeholderTextColor={colors.textMuted}
             value={name}
             onChangeText={setName}
+            autoFocus
+            returnKeyType="done"
           />
-        </View>
+        </Animated.View>
 
         
-        <View className="pb-4">
-          <Text className="text-sm font-medium text-text-light-secondary dark:text-text-dark-secondary mb-2">
-            Icon
-          </Text>
-          <View className="flex-row flex-wrap -m-1">
-            {BOTTLE_ICONS.map((i) => (
-              <TouchableOpacity
-                key={i}
-                className={`m-1 w-12 h-12 rounded-xl items-center justify-center ${
-                  icon === i
-                    ? "bg-primary-100 dark:bg-primary-900 border-2 border-primary-500"
-                    : "bg-surface-light dark:bg-surface-dark border border-gray-200 dark:border-gray-700"
-                }`}
-                onPress={() => setIcon(i)}
-              >
-                <Text className="text-2xl">{i}</Text>
-              </TouchableOpacity>
-            ))}
+        <Animated.View entering={FadeInDown.duration(300).delay(100)} style={styles.card}>
+          <Text style={styles.cardLabel}>FLASKTYP</Text>
+          <View style={styles.modelGrid}>
+            {BOTTLE_MODELS.map((model) => {
+              const sel = model.id === modelId;
+              return (
+                <TouchableOpacity
+                  key={model.id}
+                  style={[styles.modelCard, sel && styles.modelCardSel]}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setModelId(model.id);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <BottleIcon modelKey={model.id} size={28} color={sel ? colors.accent : colors.textMuted} />
+                  <Text style={[styles.modelName, sel && { color: colors.accent }]}>{model.name}</Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
-        </View>
+        </Animated.View>
 
         
-        <View className="pb-4">
-          <Text className="text-sm font-medium text-text-light-secondary dark:text-text-dark-secondary mb-2">
-            Color
-          </Text>
-          <View className="flex-row flex-wrap -m-1">
+        <Animated.View entering={FadeInDown.duration(300).delay(150)} style={styles.card}>
+          <Text style={styles.cardLabel}>FÄRG</Text>
+          <View style={styles.colorRow}>
             {BOTTLE_COLORS.map((c) => (
               <TouchableOpacity
                 key={c}
-                className={`m-1 w-10 h-10 rounded-full items-center justify-center ${
-                  color === c ? "border-2 border-gray-900 dark:border-white" : ""
-                }`}
-                style={{ backgroundColor: c }}
-                onPress={() => setColor(c)}
+                style={[styles.colorDot, { backgroundColor: c }, color === c && styles.colorDotSel]}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setColor(c);
+                }}
               >
-                {color === c && (
-                  <Ionicons name="checkmark" size={20} color="white" />
-                )}
+                {color === c && <Feather name="check" size={16} color="#FFF" />}
               </TouchableOpacity>
             ))}
           </View>
-        </View>
+        </Animated.View>
 
         
-        <View className="pb-4">
-          <Text className="text-sm font-medium text-text-light-secondary dark:text-text-dark-secondary mb-2">
-            Capacity (ml)
-          </Text>
-          <TextInput
-            className="bg-surface-light dark:bg-surface-dark border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-4 text-text-light-primary dark:text-text-dark-primary mb-2"
-            placeholder="500"
-            placeholderTextColor="#94A3B8"
-            value={capacity}
-            onChangeText={setCapacity}
-            keyboardType="number-pad"
-          />
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-1">
-            {PRESET_CAPACITIES.map((c) => (
-              <TouchableOpacity
-                key={c}
-                className={`mx-1 px-4 py-2 rounded-full ${
-                  capacity === String(c)
-                    ? "bg-primary-500"
-                    : "bg-surface-light dark:bg-surface-dark border border-gray-200 dark:border-gray-700"
-                }`}
-                onPress={() => setCapacity(String(c))}
-              >
-                <Text
-                  className={`font-medium ${
-                    capacity === String(c)
-                      ? "text-white"
-                      : "text-text-light-secondary dark:text-text-dark-secondary"
-                  }`}
-                >
-                  {c >= 1000 ? `${c / 1000}L` : `${c}ml`}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-
-        
-        <View className="pb-6">
-          <View className="flex-row items-center justify-between mb-2">
-            <Text className="text-sm font-medium text-text-light-secondary dark:text-text-dark-secondary">
-              Smart Bottle (Optional)
-            </Text>
+        <Animated.View entering={FadeInDown.duration(300).delay(200)} style={styles.card}>
+          <View style={styles.bleHeader}>
+            <Text style={styles.cardLabel}>BLUETOOTH</Text>
             <TouchableOpacity
-              className="flex-row items-center"
+              style={styles.scanBtn}
               onPress={isScanning ? handleStopScan : handleScan}
+              activeOpacity={0.7}
             >
               {isScanning ? (
-                <>
-                  <ActivityIndicator size="small" color="#0EA5E9" />
-                  <Text className="text-primary-500 ml-2">Stop</Text>
-                </>
+                <ActivityIndicator size="small" color={colors.accent} />
               ) : (
-                <>
-                  <Ionicons name="bluetooth" size={18} color="#0EA5E9" />
-                  <Text className="text-primary-500 ml-1">Scan</Text>
-                </>
+                <Feather name="search" size={16} color={colors.accent} />
               )}
+              <Text style={styles.scanBtnText}>{isScanning ? "Stoppa" : "Sök enheter"}</Text>
             </TouchableOpacity>
           </View>
 
           {selectedDevice ? (
             <TouchableOpacity
-              className="bg-primary-50 dark:bg-primary-900/30 border border-primary-200 dark:border-primary-800 rounded-xl p-4 flex-row items-center"
+              style={styles.deviceSelected}
               onPress={() => setSelectedDevice(null)}
+              activeOpacity={0.7}
             >
-              <View className="w-10 h-10 bg-primary-100 dark:bg-primary-900 rounded-full items-center justify-center">
-                <Ionicons name="bluetooth" size={20} color="#0EA5E9" />
+              <View style={styles.deviceDot}>
+                <Feather name="bluetooth" size={16} color={colors.accent} />
               </View>
-              <View className="flex-1 ml-3">
-                <Text className="font-medium text-text-light-primary dark:text-text-dark-primary">
-                  {selectedDevice.name || "SmartBottle"}
-                </Text>
-                <Text className="text-xs text-text-light-muted dark:text-text-dark-muted">
-                  {selectedDevice.id}
-                </Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.deviceName}>{selectedDevice.name || "SmartBottle"}</Text>
+                <Text style={styles.deviceMeta}>{selectedDevice.id.substring(0, 20)}...</Text>
               </View>
-              <Ionicons name="checkmark-circle" size={24} color="#0EA5E9" />
+              <Feather name="check-circle" size={20} color={colors.success} />
             </TouchableOpacity>
           ) : devices.length > 0 ? (
-            <View className="bg-surface-light dark:bg-surface-dark rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700">
-              {devices.map((device, index) => (
+            <View style={styles.deviceList}>
+              {devices.map((device, i) => (
                 <TouchableOpacity
                   key={device.id}
-                  className={`p-4 flex-row items-center ${
-                    index < devices.length - 1 ? "border-b border-gray-100 dark:border-gray-800" : ""
-                  }`}
-                  onPress={() => setSelectedDevice(device)}
+                  style={[styles.deviceRow, i < devices.length - 1 && styles.deviceRowBorder]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setSelectedDevice(device);
+                  }}
+                  activeOpacity={0.7}
                 >
-                  <Ionicons name="bluetooth" size={20} color="#64748B" />
-                  <View className="flex-1 ml-3">
-                    <Text className="font-medium text-text-light-primary dark:text-text-dark-primary">
-                      {device.name || "SmartBottle"}
-                    </Text>
-                    <Text className="text-xs text-text-light-muted dark:text-text-dark-muted">
-                      Signal: {device.rssi || "N/A"} dBm
-                    </Text>
+                  <Feather name="bluetooth" size={16} color={colors.textMuted} />
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={styles.deviceName}>{device.name || "SmartBottle"}</Text>
+                    <Text style={styles.deviceMeta}>{device.rssi || "--"} dBm</Text>
                   </View>
+                  <Feather name="chevron-right" size={16} color={colors.textMuted} />
                 </TouchableOpacity>
               ))}
             </View>
           ) : (
-            <View className="bg-surface-light dark:bg-surface-dark rounded-xl p-6 items-center border border-gray-200 dark:border-gray-700">
-              <Ionicons name="bluetooth-outline" size={32} color="#94A3B8" />
-              <Text className="text-text-light-muted dark:text-text-dark-muted mt-2 text-center text-sm">
-                Tap "Scan" to find your{"\n"}SmartBottle device
+            <View style={styles.bleEmpty}>
+              <Feather name="bluetooth" size={24} color={colors.textMuted} />
+              <Text style={styles.bleEmptyText}>
+                Tryck "Sök enheter" för att hitta din SmartBottle
               </Text>
             </View>
           )}
-        </View>
+        </Animated.View>
+
+        
+        <Animated.View entering={FadeInDown.duration(300).delay(250)} style={styles.infoRow}>
+          <Feather name="info" size={14} color={colors.textMuted} />
+          <Text style={styles.infoText}>
+            Kapaciteten beräknas automatiskt vid kalibrering
+          </Text>
+        </Animated.View>
       </ScrollView>
 
       
-      <View className="px-6 pb-6">
+      <View style={styles.footer}>
         <TouchableOpacity
-          className={`bg-primary-500 rounded-xl py-4 items-center ${
-            isLoading || !name ? "opacity-50" : ""
-          }`}
+          style={[styles.createBtn, (!name.trim() || isLoading) && { opacity: 0.4 }]}
           onPress={handleCreate}
-          disabled={isLoading || !name}
+          disabled={isLoading || !name.trim()}
+          activeOpacity={0.85}
         >
-          <Text className="text-white font-semibold text-lg">
-            {isLoading ? "Creating..." : "Create Bottle"}
-          </Text>
+          {isLoading ? (
+            <ActivityIndicator color="#FFF" size="small" />
+          ) : (
+            <>
+              <Feather name="plus" size={20} color="#FFF" style={{ marginRight: 8 }} />
+              <Text style={styles.createBtnText}>Skapa och kalibrera</Text>
+            </>
+          )}
         </TouchableOpacity>
       </View>
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
+  scroll: { flex: 1 },
+  scrollContent: { padding: spacing.page, paddingBottom: 20 },
+
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: spacing.cardRadius,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 16,
+    marginBottom: 14,
+  },
+  cardLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: colors.textMuted,
+    letterSpacing: 0.5,
+    marginBottom: 12,
+  },
+
+  nameInput: {
+    backgroundColor: colors.inputBg,
+    borderWidth: 1,
+    borderColor: colors.inputBorder,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    fontSize: 16,
+    fontWeight: "500",
+    color: colors.textPrimary,
+  },
+
+  modelGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  modelCard: {
+    width: "30%",
+    flexGrow: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+    backgroundColor: colors.background,
+    borderWidth: 1.5,
+    borderColor: "transparent",
+  },
+  modelCardSel: {
+    borderColor: colors.accent,
+    backgroundColor: colors.primaryMuted,
+  },
+  modelName: {
+    marginTop: 6,
+    fontSize: 11,
+    fontWeight: "600",
+    color: colors.textSecondary,
+    textAlign: "center",
+  },
+
+  colorRow: {
+    flexDirection: "row",
+    gap: 10,
+    flexWrap: "wrap",
+  },
+  colorDot: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  colorDotSel: {
+    borderWidth: 3,
+    borderColor: "rgba(255,255,255,0.9)",
+  },
+
+  bleHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  scanBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+    backgroundColor: colors.primaryMuted,
+  },
+  scanBtnText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: colors.accent,
+  },
+  deviceSelected: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.primaryMuted,
+    borderWidth: 1,
+    borderColor: colors.accent + "30",
+    borderRadius: 12,
+    padding: 12,
+  },
+  deviceDot: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.accent + "20",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 10,
+  },
+  deviceName: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.textPrimary,
+  },
+  deviceMeta: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 1,
+  },
+  deviceList: {
+    borderRadius: 12,
+    backgroundColor: colors.background,
+    overflow: "hidden",
+  },
+  deviceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+  },
+  deviceRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  bleEmpty: {
+    alignItems: "center",
+    paddingVertical: 20,
+  },
+  bleEmptyText: {
+    fontSize: 13,
+    color: colors.textMuted,
+    textAlign: "center",
+    marginTop: 8,
+    lineHeight: 18,
+  },
+
+  infoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 4,
+    marginBottom: 8,
+  },
+  infoText: {
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+
+  footer: {
+    paddingHorizontal: spacing.page,
+    paddingBottom: 16,
+  },
+  createBtn: {
+    flexDirection: "row",
+    backgroundColor: colors.primary,
+    borderRadius: 14,
+    height: 52,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  createBtnText: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#FFFFFF",
+  },
+});

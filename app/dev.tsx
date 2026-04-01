@@ -205,7 +205,7 @@ export default function DevTools() {
 
   const sendAchievementNotif = async () => {
     try {
-      await notificationService.sendAchievementUnlocked("First Sip", "🏆");
+      await notificationService.sendAchievementUnlocked("First Sip", "trophy");
       addLog("Sent: achievement notification");
     } catch (e: any) {
       addLog(`Notification error: ${e.message}`);
