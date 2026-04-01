@@ -369,7 +369,7 @@ export function BottleSkia({
 
           
           <Text style={[styles.mlLabel, isDisconnected && styles.mlLabelDim]}>
-            {isDisconnected ? "Fr\u00e5nkopplad" : "ml kvar"}
+            {isDisconnected ? "Frånkopplad" : "ml kvar"}
           </Text>
         </View>
       </Animated.View>

@@ -197,26 +197,10 @@ export const useHydrationStore = create<HydrationState>((set, get) => ({
   },
 
   setSimulatedWeight: (weight: number) => {
-    const state = get();
-    const prev = state.simulatedWeightG ?? state.fullWeightG;
-    const prevWater = Math.max(0, prev - state.emptyWeightG);
-    const newWater = Math.max(0, weight - state.emptyWeightG);
-    const consumed = prevWater - newWater;
-
-    if (consumed > 0) {
-      const newIntake = state.todayIntakeMl + consumed;
-      set({
-        simulatedWeightG: weight,
-        previousWeightG: weight,
-        todayIntakeMl: newIntake,
-      });
-      persist(getPersistedFields(get()));
-    } else {
-      set({
-        simulatedWeightG: weight,
-        previousWeightG: weight,
-      });
-    }
+    set({
+      simulatedWeightG: weight,
+      previousWeightG: weight,
+    });
   },
 
   refillBottle: () => {

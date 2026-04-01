@@ -55,7 +55,12 @@ export default function ProfileStep() {
         age: parseInt(age),
         gender: gender as any,
       });
-      router.push("/onboarding/activity" as any);
+      if (isEditing) {
+        if (router.canGoBack()) router.back();
+        else router.replace("/(tabs)");
+      } else {
+        router.push("/onboarding/activity" as any);
+      }
     } catch (e: any) {
       Alert.alert("Fel", e.message || "Kunde inte spara");
     } finally {

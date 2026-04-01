@@ -136,12 +136,15 @@ export default function Settings() {
         text: "Logga ut",
         style: "destructive",
         onPress: async () => {
+          await store.resetAll();
+          demoStore.stopSimulation();
+          bottleStore.disconnect();
           await authStore.clearToken();
           router.replace("/(auth)/login");
         },
       },
     ]);
-  }, [authStore]);
+  }, [authStore, store, demoStore, bottleStore]);
 
   const handleResetIntake = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -182,6 +185,9 @@ export default function Settings() {
                       if (authStore.token) {
                         await deleteAccount({ token: authStore.token });
                       }
+                      await store.resetAll();
+                      demoStore.stopSimulation();
+                      bottleStore.disconnect();
                       await authStore.clearToken();
                       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
                       router.replace("/(auth)/login");

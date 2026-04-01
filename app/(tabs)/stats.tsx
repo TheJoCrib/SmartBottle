@@ -52,7 +52,7 @@ function AnimatedBar({ value, maxValue, index, label, goal, selected, onPress }:
       index * 60,
       withSpring(targetH, { damping: 14, stiffness: 90, mass: 0.8 })
     );
-  }, [targetH]);
+  }, [targetH, index]);
 
   const barStyle = useAnimatedStyle(() => ({
     height: barHeight.value,
@@ -330,7 +330,7 @@ export default function Stats() {
               </Text>
               <Text style={s.dayDetailInlineValue}>{monthDays[selectedMonthDay]} ml</Text>
               <Text style={s.dayDetailInlinePct}>
-                {Math.round((monthDays[selectedMonthDay] / dailyGoal) * 100)}% av mål
+                {dailyGoal > 0 ? Math.round((monthDays[selectedMonthDay] / dailyGoal) * 100) : 0}% av mål
               </Text>
             </Animated.View>
           )}

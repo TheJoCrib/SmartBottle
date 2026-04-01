@@ -6,7 +6,7 @@ import { useMutation, useQuery } from "convex/react";
 import { useKeepAwake } from "expo-keep-awake";
 import * as Haptics from "expo-haptics";
 import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
-import { Feather, Ionicons } from "@expo/vector-icons";
+import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { api } from "../../convex/_generated/api";
 import { useAuthStore } from "../../stores/authStore";
 import { useBottleStore } from "../../stores/bottleStore";
@@ -45,17 +45,14 @@ export default function CalibrateBottle() {
       return;
     }
 
-    const diff = Math.abs((currentWeight ?? 0) - (lastWeightRef.current ?? 0));
     lastWeightRef.current = currentWeight;
 
-    if (diff > STABILITY_THRESHOLD_G) {
-      setIsStable(false);
-      if (stableTimerRef.current) clearTimeout(stableTimerRef.current);
-      stableTimerRef.current = setTimeout(() => {
-        setIsStable(true);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }, STABILITY_DURATION_MS);
-    }
+    setIsStable(false);
+    if (stableTimerRef.current) clearTimeout(stableTimerRef.current);
+    stableTimerRef.current = setTimeout(() => {
+      setIsStable(true);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }, STABILITY_DURATION_MS);
 
     return () => {
       if (stableTimerRef.current) clearTimeout(stableTimerRef.current);
@@ -262,8 +259,6 @@ export default function CalibrateBottle() {
     </SafeAreaView>
   );
 }
-
-import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 const styles = StyleSheet.create({
   container: {
