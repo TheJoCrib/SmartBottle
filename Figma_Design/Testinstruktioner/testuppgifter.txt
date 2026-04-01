@@ -43,9 +43,3 @@ Testperson:
 19. Hitta var du kan logga ut.
 
 20. Hitta var du kan radera hela ditt konto.
-
-Skriv efter varje uppgift:
-- Gick det bra? Vad var svårt?
-- Betyg 1-5 (1 = dåligt, 5 = bra)
-
-Tack för att du testade!
