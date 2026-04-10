@@ -177,7 +177,7 @@ export default function GoalOnboarding() {
             activeOpacity={0.8}
           >
             <Text style={styles.buttonText}>
-              {isLoading ? "Sparar..." : "Börja"}
+              {isLoading ? "Sparar..." : (user?.height && user?.weight) ? "Spara" : "Börja"}
             </Text>
           </TouchableOpacity>
         </Animated.View>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { useAuthStore } from "../../stores/authStore";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -54,9 +54,14 @@ export default function ActivityOnboarding() {
   const insets = useSafeAreaInsets();
   const { token } = useAuthStore();
   const updateProfile = useMutation(api.auth.updateProfile);
+  const user = useQuery(api.auth.validateSession, token ? { token } : "skip");
 
   const [activityLevel, setActivityLevel] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    if (user?.activityLevel) setActivityLevel(user.activityLevel);
+  }, [user]);
 
   const handleSelect = (value: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);

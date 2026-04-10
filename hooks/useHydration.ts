@@ -15,11 +15,14 @@ import {
 const LOG_DEBOUNCE_MS = 5000;
 
 const STABILITY_SAMPLES = 3;
-const STABILITY_TOLERANCE_G = 3;
+const STABILITY_TOLERANCE_G = 5;
+
+const MAX_MEASURING_MS = 12000;
 
 export function useHydration(): void {
   const currentWeight = useBottleStore((s) => s.currentWeight);
   const isConnected = useBottleStore((s) => s.isConnected);
+  const isCalibrating = useBottleStore((s) => s.isCalibrating);
   const setMeasuringDrink = useBottleStore((s) => s.setMeasuringDrink);
   const token = useAuthStore((s) => s.token);
 
@@ -40,11 +43,13 @@ export function useHydration(): void {
   const processingRef = useRef(false);
   const wasOffScaleRef = useRef(false);
   const stableBufferRef = useRef<number[]>([]);
+  const measuringStartAtRef = useRef<number | null>(null);
 
   useEffect(() => {
     baselineRef.current = null;
     wasOffScaleRef.current = false;
     stableBufferRef.current = [];
+    measuringStartAtRef.current = null;
     setMeasuringDrink(false);
   }, [activeBottleId, setMeasuringDrink]);
 
@@ -53,13 +58,25 @@ export function useHydration(): void {
       baselineRef.current = null;
       wasOffScaleRef.current = false;
       stableBufferRef.current = [];
+      measuringStartAtRef.current = null;
       setMeasuringDrink(false);
     }
   }, [isConnected, setMeasuringDrink]);
 
   useEffect(() => {
+    if (!isCalibrating) {
+      baselineRef.current = null;
+      wasOffScaleRef.current = false;
+      stableBufferRef.current = [];
+      measuringStartAtRef.current = null;
+      setMeasuringDrink(false);
+    }
+  }, [isCalibrating, setMeasuringDrink]);
+
+  useEffect(() => {
     if (demoMode) return;
     if (!isConnected || !isCalibrated) return;
+    if (isCalibrating) return;
     if (currentWeight === null) return;
     if (!token || !activeBottleId || !defaultBeverageId) return;
     if (processingRef.current) return;
@@ -69,6 +86,9 @@ export function useHydration(): void {
     if (curr < emptyWeightG - OFF_SCALE_MARGIN_G) {
       wasOffScaleRef.current = true;
       stableBufferRef.current = [];
+      if (measuringStartAtRef.current === null) {
+        measuringStartAtRef.current = Date.now();
+      }
       setMeasuringDrink(true);
       return;
     }
@@ -89,12 +109,19 @@ export function useHydration(): void {
 
     const min = Math.min(...buf);
     const max = Math.max(...buf);
-    if (max - min > STABILITY_TOLERANCE_G) return;
+
+    const measuringFor = measuringStartAtRef.current
+      ? Date.now() - measuringStartAtRef.current
+      : 0;
+    const timedOut = measuringFor > MAX_MEASURING_MS;
+
+    if (max - min > STABILITY_TOLERANCE_G && !timedOut) return;
 
     const sorted = [...buf].sort((a, b) => a - b);
     const analyzedWeight = sorted[Math.floor(sorted.length / 2)];
     wasOffScaleRef.current = false;
     stableBufferRef.current = [];
+    measuringStartAtRef.current = null;
     setMeasuringDrink(false);
 
     const prev = baselineRef.current;
@@ -140,6 +167,7 @@ export function useHydration(): void {
     currentWeight,
     isConnected,
     isCalibrated,
+    isCalibrating,
     demoMode,
     token,
     activeBottleId,

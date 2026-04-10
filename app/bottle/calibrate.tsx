@@ -21,14 +21,20 @@ const STABILITY_DURATION_MS = 2500;
 export default function CalibrateBottle() {
   useKeepAwake();
 
-  const { bottleId: routeBottleId } = useLocalSearchParams<{ bottleId?: string }>();
+  const { bottleId: routeBottleId, pairOnly } = useLocalSearchParams<{
+    bottleId?: string;
+    pairOnly?: string;
+  }>();
 
   const { token } = useAuthStore();
   const { currentWeight, isConnected } = useBottleStore();
+  const setCalibrating = useBottleStore((s) => s.setCalibrating);
   const hydrationStore = useHydrationStore();
   const updateBottle = useMutation(api.bottles.update);
 
-  const [step, setStep] = useState<CalibrationStep>(isConnected ? "empty" : "connect");
+  const [step, setStep] = useState<CalibrationStep>(
+    isConnected && pairOnly !== "1" ? "empty" : "connect",
+  );
   const [emptyWeight, setEmptyWeight] = useState<number | null>(null);
   const [fullWeight, setFullWeight] = useState<number | null>(null);
   const [isStable, setIsStable] = useState(false);
@@ -41,6 +47,11 @@ export default function CalibrateBottle() {
   const stableTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastWeightRef = useRef<number | null>(null);
   const taredRef = useRef(false);
+
+  useEffect(() => {
+    setCalibrating(true);
+    return () => setCalibrating(false);
+  }, [setCalibrating]);
 
   const bottles = useQuery(api.bottles.list, token ? { token } : "skip");
   const targetBottle = routeBottleId
@@ -68,8 +79,26 @@ export default function CalibrateBottle() {
   }, [currentWeight, step]);
 
   useEffect(() => {
-    if (isConnected && step === "connect") setStep("empty");
-  }, [isConnected]);
+    if (!isConnected || step !== "connect") return;
+    if (pairOnly === "1") {
+      router.back();
+      return;
+    }
+    setStep("empty");
+  }, [isConnected, step, pairOnly]);
+
+  const runTare = async () => {
+    setIsTaring(true);
+    setIsStable(false);
+    lastWeightRef.current = null;
+    try {
+      await bluetoothService.tare();
+    } catch (e) {
+      console.warn("Failed to tare scale before calibration:", e);
+    } finally {
+      setTimeout(() => setIsTaring(false), 800);
+    }
+  };
 
   useEffect(() => {
     if (!isConnected) {
@@ -80,18 +109,14 @@ export default function CalibrateBottle() {
     if (taredRef.current) return;
 
     taredRef.current = true;
-    setIsTaring(true);
-    setIsStable(false);
-    (async () => {
-      try {
-        await bluetoothService.tare();
-      } catch (e) {
-        console.warn("Failed to tare scale before calibration:", e);
-      } finally {
-        setTimeout(() => setIsTaring(false), 800);
-      }
-    })();
+    runTare();
   }, [isConnected, step]);
+
+  const handleRetare = async () => {
+    if (!isConnected || isTaring) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    await runTare();
+  };
 
   const handleConnect = async () => {
     if (!targetBottle?.bleDeviceId) {
@@ -152,6 +177,13 @@ export default function CalibrateBottle() {
 
   const handleCaptureEmpty = () => {
     if (currentWeight === null) return;
+    if (currentWeight < 0) {
+      Alert.alert(
+        "Ogiltig vikt",
+        "Tom vikt är negativ. Tog du bort allt från vågen innan nollställning? Tryck 'Nollställ igen' och försök igen.",
+      );
+      return;
+    }
     setEmptyWeight(currentWeight);
     setIsStable(false);
     lastWeightRef.current = null;
@@ -313,10 +345,18 @@ export default function CalibrateBottle() {
                 <Text style={styles.weightValue}>
                   {isTaring ? "..." : `${Math.round(currentWeight)}g`}
                 </Text>
-                {isStable && !isTaring && (
+                {isStable && !isTaring && currentWeight >= 0 && (
                   <View style={styles.stableBadge}>
                     <Feather name="check-circle" size={14} color={colors.success} />
                     <Text style={styles.stableText}>Stabil</Text>
+                  </View>
+                )}
+                {!isTaring && currentWeight < -5 && (
+                  <View style={styles.warningBadge}>
+                    <Feather name="alert-triangle" size={14} color={colors.warning} />
+                    <Text style={styles.warningText}>
+                      Vågen nollställdes med något på — tryck Nollställ igen
+                    </Text>
                   </View>
                 )}
               </Animated.View>
@@ -325,13 +365,29 @@ export default function CalibrateBottle() {
             <TouchableOpacity
               style={[
                 styles.primaryButton,
-                (!isStable || currentWeight === null || isTaring) && { opacity: 0.4 },
+                (!isStable || currentWeight === null || isTaring || (currentWeight ?? 0) < 0) && {
+                  opacity: 0.4,
+                },
               ]}
               onPress={handleCaptureEmpty}
-              disabled={!isStable || currentWeight === null || isTaring}
+              disabled={
+                !isStable || currentWeight === null || isTaring || (currentWeight ?? 0) < 0
+              }
               activeOpacity={0.85}
             >
               <Text style={styles.primaryButtonText}>Lås tom vikt</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.secondaryButton, isTaring && { opacity: 0.4 }]}
+              onPress={handleRetare}
+              disabled={isTaring}
+              activeOpacity={0.7}
+            >
+              <Feather name="refresh-cw" size={15} color={colors.textSecondary} />
+              <Text style={styles.secondaryButtonText}>
+                {isTaring ? "Nollställer..." : "Nollställ igen"}
+              </Text>
             </TouchableOpacity>
           </Animated.View>
         )}
@@ -573,6 +629,37 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: "700",
     color: "#FFFFFF",
+  },
+  secondaryButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    marginTop: 12,
+  },
+  secondaryButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.textSecondary,
+  },
+  warningBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 8,
+    backgroundColor: colors.warningMuted,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    maxWidth: 260,
+  },
+  warningText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: colors.warning,
+    flexShrink: 1,
   },
   deviceList: {
     width: "100%",
