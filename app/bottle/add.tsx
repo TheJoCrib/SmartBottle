@@ -16,6 +16,7 @@ import * as Haptics from "expo-haptics";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { api } from "../../convex/_generated/api";
 import { useAuthStore } from "../../stores/authStore";
+import { useBottleStore } from "../../stores/bottleStore";
 import { bluetoothService, Device } from "../../services/bluetooth";
 import { Feather } from "@expo/vector-icons";
 import { BOTTLE_MODELS } from "../../constants/bottleModels";
@@ -30,16 +31,21 @@ const BOTTLE_COLORS = [
 export default function AddBottle() {
   const { token } = useAuthStore();
   const createBottle = useMutation(api.bottles.create);
+  const connectedDeviceId = useBottleStore((s) => s.connectedDeviceId);
+  const isBleConnected = useBottleStore((s) => s.isConnected);
 
   const [name, setName] = useState("");
   const [color, setColor] = useState(BOTTLE_COLORS[0]);
   const [modelId, setModelId] = useState("water-bottle");
   const [isScanning, setIsScanning] = useState(false);
   const [devices, setDevices] = useState<Device[]>([]);
-  const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
+  const [selectedDeviceName, setSelectedDeviceName] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   const selectedModel = BOTTLE_MODELS.find((m) => m.id === modelId) || BOTTLE_MODELS[0];
+
+  const hasConnectedScale = isBleConnected && !!connectedDeviceId;
 
   const handleScan = async () => {
     setIsScanning(true);
@@ -68,9 +74,10 @@ export default function AddBottle() {
       Alert.alert("Fel", "Ange ett namn för flaskan");
       return;
     }
+    const deviceIdToSave = selectedDeviceId || connectedDeviceId || undefined;
     setIsLoading(true);
     try {
-      await createBottle({
+      const newBottleId = await createBottle({
         token,
         name: name.trim(),
         icon: selectedModel.iconName,
@@ -78,10 +85,13 @@ export default function AddBottle() {
         capacityMl: 0,
         emptyWeightG: 0,
         fullWeightG: 0,
-        bleDeviceId: selectedDevice?.id,
+        bleDeviceId: deviceIdToSave,
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.replace("/bottle/calibrate");
+      router.replace({
+        pathname: "/bottle/calibrate",
+        params: newBottleId ? { bottleId: String(newBottleId) } : {},
+      });
     } catch (error: any) {
       Alert.alert("Fel", error.message || "Kunde inte skapa flaskan");
     } finally {
@@ -172,49 +182,83 @@ export default function AddBottle() {
             </TouchableOpacity>
           </View>
 
-          {selectedDevice ? (
+          {selectedDeviceId ? (
             <TouchableOpacity
               style={styles.deviceSelected}
-              onPress={() => setSelectedDevice(null)}
+              onPress={() => {
+                setSelectedDeviceId(null);
+                setSelectedDeviceName(null);
+              }}
               activeOpacity={0.7}
             >
               <View style={styles.deviceDot}>
                 <Feather name="bluetooth" size={16} color={colors.accent} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.deviceName}>{selectedDevice.name || "SmartBottle"}</Text>
-                <Text style={styles.deviceMeta}>{selectedDevice.id.substring(0, 20)}...</Text>
+                <Text style={styles.deviceName}>{selectedDeviceName || "SmartBottle"}</Text>
+                <Text style={styles.deviceMeta}>{selectedDeviceId.substring(0, 20)}...</Text>
               </View>
               <Feather name="check-circle" size={20} color={colors.success} />
             </TouchableOpacity>
-          ) : devices.length > 0 ? (
-            <View style={styles.deviceList}>
-              {devices.map((device, i) => (
+          ) : (
+            <>
+              
+              {hasConnectedScale && (
                 <TouchableOpacity
-                  key={device.id}
-                  style={[styles.deviceRow, i < devices.length - 1 && styles.deviceRowBorder]}
+                  style={styles.reuseCard}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    setSelectedDevice(device);
+                    setSelectedDeviceId(connectedDeviceId);
+                    setSelectedDeviceName("SmartBottle (ansluten)");
                   }}
-                  activeOpacity={0.7}
+                  activeOpacity={0.8}
                 >
-                  <Feather name="bluetooth" size={16} color={colors.textMuted} />
-                  <View style={{ flex: 1, marginLeft: 10 }}>
-                    <Text style={styles.deviceName}>{device.name || "SmartBottle"}</Text>
-                    <Text style={styles.deviceMeta}>{device.rssi || "--"} dBm</Text>
+                  <View style={styles.reuseIcon}>
+                    <Feather name="bluetooth" size={18} color={colors.success} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.deviceName}>Använd ansluten våg</Text>
+                    <Text style={styles.deviceMeta}>
+                      Dela samma SmartBottle-våg mellan flaskor
+                    </Text>
                   </View>
                   <Feather name="chevron-right" size={16} color={colors.textMuted} />
                 </TouchableOpacity>
-              ))}
-            </View>
-          ) : (
-            <View style={styles.bleEmpty}>
-              <Feather name="bluetooth" size={24} color={colors.textMuted} />
-              <Text style={styles.bleEmptyText}>
-                Tryck "Sök enheter" för att hitta din SmartBottle
-              </Text>
-            </View>
+              )}
+
+              {devices.length > 0 ? (
+                <View style={styles.deviceList}>
+                  {devices.map((device, i) => (
+                    <TouchableOpacity
+                      key={device.id}
+                      style={[styles.deviceRow, i < devices.length - 1 && styles.deviceRowBorder]}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        setSelectedDeviceId(device.id);
+                        setSelectedDeviceName(device.name || "SmartBottle");
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Feather name="bluetooth" size={16} color={colors.textMuted} />
+                      <View style={{ flex: 1, marginLeft: 10 }}>
+                        <Text style={styles.deviceName}>{device.name || "SmartBottle"}</Text>
+                        <Text style={styles.deviceMeta}>{device.rssi || "--"} dBm</Text>
+                      </View>
+                      <Feather name="chevron-right" size={16} color={colors.textMuted} />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ) : (
+                !hasConnectedScale && (
+                  <View style={styles.bleEmpty}>
+                    <Feather name="bluetooth" size={24} color={colors.textMuted} />
+                    <Text style={styles.bleEmptyText}>
+                      Tryck "Sök enheter" för att hitta din SmartBottle
+                    </Text>
+                  </View>
+                )
+              )}
+            </>
           )}
         </Animated.View>
 
@@ -354,6 +398,25 @@ const styles = StyleSheet.create({
     borderColor: colors.accent + "30",
     borderRadius: 12,
     padding: 12,
+  },
+  reuseCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(16, 185, 129, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(16, 185, 129, 0.25)",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
+  },
+  reuseIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(16, 185, 129, 0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 10,
   },
   deviceDot: {
     width: 36,

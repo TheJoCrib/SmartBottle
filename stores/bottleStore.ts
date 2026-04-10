@@ -4,10 +4,10 @@ interface BottleState {
   currentWeight: number | null;
   isConnected: boolean;
   connectedDeviceId: string | null;
-  batteryLevel: number | null;
+  isMeasuringDrink: boolean;
   setWeight: (weight: number) => void;
   setConnected: (connected: boolean, deviceId?: string) => void;
-  setBatteryLevel: (level: number) => void;
+  setMeasuringDrink: (value: boolean) => void;
   disconnect: () => void;
 }
 
@@ -15,7 +15,7 @@ export const useBottleStore = create<BottleState>((set) => ({
   currentWeight: null,
   isConnected: false,
   connectedDeviceId: null,
-  batteryLevel: null,
+  isMeasuringDrink: false,
 
   setWeight: (weight: number) => {
     set({ currentWeight: weight });
@@ -28,8 +28,8 @@ export const useBottleStore = create<BottleState>((set) => ({
     });
   },
 
-  setBatteryLevel: (level: number) => {
-    set({ batteryLevel: level });
+  setMeasuringDrink: (value: boolean) => {
+    set((s) => (s.isMeasuringDrink === value ? s : { isMeasuringDrink: value }));
   },
 
   disconnect: () => {
@@ -37,7 +37,7 @@ export const useBottleStore = create<BottleState>((set) => ({
       isConnected: false,
       connectedDeviceId: null,
       currentWeight: null,
-      batteryLevel: null,
+      isMeasuringDrink: false,
     });
   },
 }));

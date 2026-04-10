@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
-import { View, Text, TouchableOpacity, Alert, StyleSheet } from "react-native";
+import { View, Text, TouchableOpacity, Alert, StyleSheet, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery } from "convex/react";
 import { useKeepAwake } from "expo-keep-awake";
 import * as Haptics from "expo-haptics";
@@ -11,16 +11,17 @@ import { api } from "../../convex/_generated/api";
 import { useAuthStore } from "../../stores/authStore";
 import { useBottleStore } from "../../stores/bottleStore";
 import { useHydrationStore } from "../../stores/hydrationStore";
-import { bluetoothService } from "../../services/bluetooth";
+import { bluetoothService, Device } from "../../services/bluetooth";
 import { colors, spacing } from "../../constants/theme";
 
 type CalibrationStep = "connect" | "empty" | "full" | "done";
 
 const STABILITY_DURATION_MS = 2500;
-const STABILITY_THRESHOLD_G = 2;
 
 export default function CalibrateBottle() {
   useKeepAwake();
+
+  const { bottleId: routeBottleId } = useLocalSearchParams<{ bottleId?: string }>();
 
   const { token } = useAuthStore();
   const { currentWeight, isConnected } = useBottleStore();
@@ -32,12 +33,19 @@ export default function CalibrateBottle() {
   const [fullWeight, setFullWeight] = useState<number | null>(null);
   const [isStable, setIsStable] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isTaring, setIsTaring] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
+  const [foundDevices, setFoundDevices] = useState<Device[]>([]);
+  const [isPairing, setIsPairing] = useState(false);
 
   const stableTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastWeightRef = useRef<number | null>(null);
+  const taredRef = useRef(false);
 
   const bottles = useQuery(api.bottles.list, token ? { token } : "skip");
-  const latestBottle = bottles?.[bottles.length - 1];
+  const targetBottle = routeBottleId
+    ? bottles?.find((b: any) => b._id === routeBottleId)
+    : bottles?.[bottles.length - 1];
 
   useEffect(() => {
     if (currentWeight === null || step === "done" || step === "connect") {
@@ -63,19 +71,82 @@ export default function CalibrateBottle() {
     if (isConnected && step === "connect") setStep("empty");
   }, [isConnected]);
 
+  useEffect(() => {
+    if (!isConnected) {
+      taredRef.current = false;
+      return;
+    }
+    if (step !== "empty") return;
+    if (taredRef.current) return;
+
+    taredRef.current = true;
+    setIsTaring(true);
+    setIsStable(false);
+    (async () => {
+      try {
+        await bluetoothService.tare();
+      } catch (e) {
+        console.warn("Failed to tare scale before calibration:", e);
+      } finally {
+        setTimeout(() => setIsTaring(false), 800);
+      }
+    })();
+  }, [isConnected, step]);
+
   const handleConnect = async () => {
-    if (!latestBottle?.bleDeviceId) {
-      Alert.alert("Fel", "Ingen Bluetooth-enhet kopplad till denna flaska");
+    if (!targetBottle?.bleDeviceId) {
+      handleStartScan();
       return;
     }
     setIsConnecting(true);
     try {
-      await bluetoothService.connect(latestBottle.bleDeviceId);
-      await bluetoothService.subscribeToWeight(() => {});
+      await bluetoothService.connectAndStream(targetBottle.bleDeviceId);
     } catch (error: any) {
       Alert.alert("Anslutningsfel", error.message);
     } finally {
       setIsConnecting(false);
+    }
+  };
+
+  const handleStartScan = async () => {
+    setFoundDevices([]);
+    setIsScanning(true);
+    try {
+      await bluetoothService.scanForDevices((device) => {
+        setFoundDevices((prev) => {
+          if (prev.find((d) => d.id === device.id)) return prev;
+          return [...prev, device];
+        });
+      }, 10000);
+    } catch (error: any) {
+      Alert.alert("Sökfel", error.message || "Kunde inte söka efter enheter");
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
+  const handleStopScan = () => {
+    bluetoothService.stopScan();
+    setIsScanning(false);
+  };
+
+  const handleSelectDevice = async (device: Device) => {
+    if (!token || !targetBottle) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    bluetoothService.stopScan();
+    setIsScanning(false);
+    setIsPairing(true);
+    try {
+      await updateBottle({
+        token,
+        bottleId: targetBottle._id as any,
+        bleDeviceId: device.id,
+      });
+      await bluetoothService.connectAndStream(device.id);
+    } catch (error: any) {
+      Alert.alert("Anslutningsfel", error.message || "Kunde inte ansluta till enheten");
+    } finally {
+      setIsPairing(false);
     }
   };
 
@@ -96,23 +167,28 @@ export default function CalibrateBottle() {
   };
 
   const handleSave = async () => {
-    if (!token || !latestBottle || emptyWeight === null || fullWeight === null) return;
+    if (!token || !targetBottle || emptyWeight === null || fullWeight === null) return;
+    if (fullWeight <= emptyWeight) {
+      Alert.alert(
+        "Ogiltig kalibrering",
+        "Full vikt måste vara större än tom vikt. Kontrollera att flaskan är fylld och att vågen är stabil.",
+      );
+      return;
+    }
     try {
       await updateBottle({
         token,
-        bottleId: latestBottle._id as any,
+        bottleId: targetBottle._id as any,
         emptyWeightG: emptyWeight,
         fullWeightG: fullWeight,
       });
       await hydrationStore.calibrate(fullWeight, emptyWeight);
-      if (latestBottle) {
-        await hydrationStore.setActiveBottle({
-          id: latestBottle._id,
-          fullWeightG: fullWeight,
-          emptyWeightG: emptyWeight,
-          capacityMl: fullWeight - emptyWeight,
-        });
-      }
+      await hydrationStore.setActiveBottle({
+        id: targetBottle._id,
+        fullWeightG: fullWeight,
+        emptyWeightG: emptyWeight,
+        capacityMl: fullWeight - emptyWeight,
+      });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.replace("/(tabs)");
     } catch (error: any) {
@@ -128,21 +204,92 @@ export default function CalibrateBottle() {
         {step === "connect" && (
           <Animated.View entering={FadeIn.duration(500)} style={styles.center}>
             <View style={styles.iconCircleLarge}>
-              <Feather name="bluetooth" size={56} color={colors.textMuted} />
+              {isScanning ? (
+                <ActivityIndicator size="large" color={colors.accent} />
+              ) : (
+                <Feather name="bluetooth" size={56} color={colors.textMuted} />
+              )}
             </View>
-            <Text style={styles.stepTitle}>Anslut din flaska</Text>
-            <Text style={styles.stepDescription}>
-              Anslut till din SmartBottle via Bluetooth för att starta kalibreringen.
+            <Text style={styles.stepTitle}>
+              {targetBottle?.bleDeviceId
+                ? "Anslut din flaska"
+                : isScanning
+                  ? "Söker efter flaskor..."
+                  : isPairing
+                    ? "Parar..."
+                    : "Hitta din flaska"}
             </Text>
+            <Text style={styles.stepDescription}>
+              {targetBottle?.bleDeviceId
+                ? "Anslut till din SmartBottle via Bluetooth för att starta kalibreringen."
+                : isScanning
+                  ? "Se till att din SmartBottle är påslagen och i närheten."
+                  : "Sök efter din SmartBottle för att para och starta kalibreringen."}
+            </Text>
+
+            
+            {!targetBottle?.bleDeviceId && foundDevices.length > 0 && (
+              <View style={styles.deviceList}>
+                {foundDevices.map((device, i) => (
+                  <TouchableOpacity
+                    key={device.id}
+                    style={[
+                      styles.deviceRow,
+                      i < foundDevices.length - 1 && styles.deviceRowBorder,
+                      isPairing && { opacity: 0.5 },
+                    ]}
+                    onPress={() => handleSelectDevice(device)}
+                    disabled={isPairing}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.deviceIcon}>
+                      <Feather name="bluetooth" size={18} color={colors.accent} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.deviceName}>{device.name || "SmartBottle"}</Text>
+                      <Text style={styles.deviceMeta}>
+                        {device.rssi ? `${device.rssi} dBm` : "Okänd signalstyrka"}
+                      </Text>
+                    </View>
+                    <Feather name="chevron-right" size={18} color={colors.textMuted} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
             <TouchableOpacity
-              style={[styles.primaryButton, isConnecting && { opacity: 0.5 }]}
-              onPress={handleConnect}
-              disabled={isConnecting}
+              style={[
+                styles.primaryButton,
+                (isConnecting || isPairing) && { opacity: 0.5 },
+              ]}
+              onPress={
+                targetBottle?.bleDeviceId
+                  ? handleConnect
+                  : isScanning
+                    ? handleStopScan
+                    : handleStartScan
+              }
+              disabled={isConnecting || isPairing}
               activeOpacity={0.85}
             >
-              <Feather name="bluetooth" size={18} color="#FFF" style={{ marginRight: 8 }} />
+              <Feather
+                name={isScanning ? "x" : "bluetooth"}
+                size={18}
+                color="#FFF"
+                style={{ marginRight: 8 }}
+              />
               <Text style={styles.primaryButtonText}>
-                {isConnecting ? "Ansluter..." : "Anslut"}
+                {targetBottle?.bleDeviceId
+                  ? isConnecting
+                    ? "Ansluter..."
+                    : "Anslut"
+                  : isPairing
+                    ? "Parar..."
+                    : isScanning
+                      ? "Stoppa sökning"
+                      : foundDevices.length > 0
+                        ? "Sök igen"
+                        : "Sök efter flaska"}
               </Text>
             </TouchableOpacity>
           </Animated.View>
@@ -155,14 +302,18 @@ export default function CalibrateBottle() {
             </View>
             <Text style={styles.stepTitle}>Tom flaska</Text>
             <Text style={styles.stepDescription}>
-              Ställ din tomma flaska på vågen. Vikten låses automatiskt när den är stabil.
+              {isTaring
+                ? "Nollställer vågen — ta bort allt från vågen."
+                : "Ställ din tomma flaska på vågen. Vikten låses automatiskt när den är stabil."}
             </Text>
 
             {currentWeight !== null && (
               <Animated.View entering={FadeIn.duration(300)} style={styles.weightCard}>
                 <Text style={styles.weightLabel}>Aktuell vikt</Text>
-                <Text style={styles.weightValue}>{Math.round(currentWeight)}g</Text>
-                {isStable && (
+                <Text style={styles.weightValue}>
+                  {isTaring ? "..." : `${Math.round(currentWeight)}g`}
+                </Text>
+                {isStable && !isTaring && (
                   <View style={styles.stableBadge}>
                     <Feather name="check-circle" size={14} color={colors.success} />
                     <Text style={styles.stableText}>Stabil</Text>
@@ -172,9 +323,12 @@ export default function CalibrateBottle() {
             )}
 
             <TouchableOpacity
-              style={[styles.primaryButton, (!isStable || currentWeight === null) && { opacity: 0.4 }]}
+              style={[
+                styles.primaryButton,
+                (!isStable || currentWeight === null || isTaring) && { opacity: 0.4 },
+              ]}
               onPress={handleCaptureEmpty}
-              disabled={!isStable || currentWeight === null}
+              disabled={!isStable || currentWeight === null || isTaring}
               activeOpacity={0.85}
             >
               <Text style={styles.primaryButtonText}>Lås tom vikt</Text>
@@ -419,5 +573,43 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: "700",
     color: "#FFFFFF",
+  },
+  deviceList: {
+    width: "100%",
+    backgroundColor: colors.surface,
+    borderRadius: spacing.cardRadius,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: 20,
+    overflow: "hidden",
+  },
+  deviceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  deviceRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  deviceIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.primaryMuted,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  deviceName: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: colors.textPrimary,
+  },
+  deviceMeta: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: 2,
   },
 });

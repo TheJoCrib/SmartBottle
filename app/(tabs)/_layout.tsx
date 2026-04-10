@@ -5,9 +5,18 @@ import { Ionicons, Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../../constants/theme";
+import { useHydration } from "../../hooks/useHydration";
+import { useNotifications } from "../../hooks/useNotifications";
+import { useBleAutoConnect } from "../../hooks/useBleAutoConnect";
 
 export default function TabsLayout() {
   const insets = useSafeAreaInsets();
+
+  useHydration();
+
+  useNotifications();
+
+  useBleAutoConnect();
 
   return (
     <Tabs

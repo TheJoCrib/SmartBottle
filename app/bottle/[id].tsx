@@ -74,7 +74,7 @@ export default function BottleDetail() {
   const handleDelete = () => {
     Alert.alert(
       "Ta bort flaska",
-      "Ar du saker pa att du vill ta bort denna flaska?",
+      "Är du säker på att du vill ta bort denna flaska?",
       [
         { text: "Avbryt", style: "cancel" },
         {
@@ -84,6 +84,9 @@ export default function BottleDetail() {
             if (!token || !id) return;
             try {
               await removeBottle({ token, bottleId: id as any });
+              if (isActiveBottle) {
+                await hydrationStore.resetCalibration();
+              }
               router.back();
             } catch (error: any) {
               Alert.alert("Fel", error.message);
@@ -207,7 +210,7 @@ export default function BottleDetail() {
                     },
                   ]}
                 >
-                  {isThisBottleConnected ? "Koppla fran" : "Anslut"}
+                  {isThisBottleConnected ? "Koppla från" : "Anslut"}
                 </Text>
               </TouchableOpacity>
             )}
@@ -235,7 +238,12 @@ export default function BottleDetail() {
 
           <TouchableOpacity
             style={styles.outlinedButton}
-            onPress={() => router.push("/bottle/calibrate")}
+            onPress={() =>
+              router.push({
+                pathname: "/bottle/calibrate",
+                params: id ? { bottleId: String(id) } : {},
+              })
+            }
           >
             <Ionicons name="options-outline" size={20} color={colors.primary} />
             <Text style={styles.outlinedButtonText}>Kalibrera om</Text>

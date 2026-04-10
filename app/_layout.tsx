@@ -28,8 +28,8 @@ export default function RootLayout() {
 
   useEffect(() => {
     offlineService.init(convex);
-    loadToken();
-    hydrationStore.loadState();
+    void loadToken();
+    void hydrationStore.loadState();
     return () => offlineService.cleanup();
   }, []);
 

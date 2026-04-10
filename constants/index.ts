@@ -9,8 +9,6 @@ export const BOTTLE_CAPACITIES = [
   { value: 2000, label: "2L" },
 ];
 
-export const BOTTLE_ICONS = ["🍶", "🫗", "🧴", "🥤", "🍼", "🏺", "🪣", "💧"];
-
 export const BOTTLE_COLORS = [
   "#0EA5E9",
   "#10B981",
@@ -32,21 +30,13 @@ export const ACTIVITY_LEVELS = [
 
 export const QUICK_LOG_AMOUNTS = [100, 200, 250, 330, 500, 750, 1000];
 
-export const XP_PER_100ML = 1;
-export const XP_PER_LEVEL = 1000;
-
-export const ACHIEVEMENT_MILESTONES = {
-  totalMl: [1000, 10000, 50000, 100000, 500000, 1000000],
-  streakDays: [3, 7, 14, 30, 60, 100, 365],
-  activeDays: [7, 30, 100, 365],
-};
-
 export const BLE_SERVICE_UUID = "12345678-1234-5678-1234-56789abcdef0";
 export const BLE_WEIGHT_CHAR_UUID = "12345678-1234-5678-1234-56789abcdef1";
-export const BLE_BATTERY_CHAR_UUID = "12345678-1234-5678-1234-56789abcdef2";
+export const BLE_COMMAND_CHAR_UUID = "12345678-1234-5678-1234-56789abcdef3";
 
 export const REFILL_THRESHOLD_G = 50;
 export const CONSUMPTION_THRESHOLD_G = 10;
+export const OFF_SCALE_MARGIN_G = 20;
 
 export const DEFAULT_REMINDER_INTERVAL_HOURS = 2;
 export const DEFAULT_QUIET_HOURS_START = "22:00";

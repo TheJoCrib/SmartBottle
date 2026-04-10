@@ -12,20 +12,18 @@ import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { useAuthStore } from "../../stores/authStore";
 import { useHydrationStore } from "../../stores/hydrationStore";
-import { useDemoStore } from "../../stores/demoStore";
 import { useWeightData } from "../../hooks/useWeightData";
 import { Ionicons, Feather } from "@expo/vector-icons";
 import Animated, {
   FadeInDown,
   useSharedValue,
   useAnimatedStyle,
-  withTiming,
   withSpring,
   withDelay,
-  Easing,
 } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { colors, spacing, typography } from "../../constants/theme";
+import { AnimatedNumber } from "../../components/AnimatedNumber";
 
 type TabKey = "idag" | "vecka" | "manad" | "totalt";
 
@@ -79,23 +77,427 @@ function AnimatedBar({ value, maxValue, index, label, goal, selected, onPress }:
   );
 }
 
+interface IdagTabProps {
+  dailyPct: number;
+  todayIntake: number;
+  dailyGoal: number;
+  waterRemaining: number;
+  streak: number;
+  isDemo: boolean;
+}
+
+const IdagTab = React.memo(function IdagTab({
+  dailyPct,
+  todayIntake,
+  dailyGoal,
+  waterRemaining,
+  streak,
+  isDemo,
+}: IdagTabProps) {
+  const ringProgress = useSharedValue(0);
+  useEffect(() => {
+    ringProgress.value = withSpring(dailyPct / 100, { damping: 16, stiffness: 80 });
+  }, [dailyPct]);
+
+  const ringStyle = useAnimatedStyle(() => ({
+    width: `${ringProgress.value * 100}%`,
+  }));
+
+  return (
+    <View>
+      
+      <Animated.View entering={FadeInDown.duration(400)} style={s.todayHero}>
+        <AnimatedNumber style={s.todayPct} value={dailyPct} suffix="%" duration={1100} />
+        <Text style={s.todayLabel}>av dagens mål</Text>
+        <View style={s.todayBar}>
+          <Animated.View style={[s.todayBarFill, ringStyle]} />
+        </View>
+      </Animated.View>
+
+      
+      <Animated.View entering={FadeInDown.duration(400).delay(100)} style={s.statsRow}>
+        <View style={s.statBox}>
+          <Ionicons name="water" size={20} color={colors.accent} />
+          <AnimatedNumber style={s.statValue} value={todayIntake} suffix=" ml" />
+          <Text style={s.statLabel}>druckit</Text>
+        </View>
+        <View style={s.statBox}>
+          <Feather name="target" size={20} color={colors.warning} />
+          <AnimatedNumber style={s.statValue} value={dailyGoal} suffix=" ml" />
+          <Text style={s.statLabel}>mål</Text>
+        </View>
+        <View style={s.statBox}>
+          <Ionicons name="water-outline" size={20} color={colors.accent} />
+          <AnimatedNumber style={s.statValue} value={waterRemaining} suffix=" ml" />
+          <Text style={s.statLabel}>i flaskan</Text>
+        </View>
+      </Animated.View>
+
+      
+      {streak > 0 && (
+        <Animated.View entering={FadeInDown.duration(400).delay(200)} style={s.streakCard}>
+          <Ionicons name="flame" size={24} color={colors.warning} />
+          <View style={{ marginLeft: 12 }}>
+            <AnimatedNumber style={s.streakValue} value={streak} suffix=" dagar i rad" duration={700} />
+            <Text style={s.streakLabel}>Du håller din streak igång!</Text>
+          </View>
+        </Animated.View>
+      )}
+
+      {isDemo && (
+        <Animated.View entering={FadeInDown.duration(400).delay(300)} style={s.demoTag}>
+          <Feather name="play-circle" size={14} color={colors.warning} />
+          <Text style={s.demoTagText}>Demoläge - simulerad data</Text>
+        </Animated.View>
+      )}
+    </View>
+  );
+});
+
+interface VeckaTabProps {
+  weeklyStats: any;
+  todayIntake: number;
+  demoWeekData: { label: string; totalMl: number }[];
+  isDemo: boolean;
+  dailyGoal: number;
+  weeklyGoalMl: number;
+}
+
+const VeckaTab = React.memo(function VeckaTab({
+  weeklyStats,
+  todayIntake,
+  demoWeekData,
+  isDemo,
+  dailyGoal,
+  weeklyGoalMl,
+}: VeckaTabProps) {
+  const [selectedDay, setSelectedDay] = useState<number | null>(null);
+  const days = (weeklyStats as any)?.dailyBreakdown ?? [];
+  const weekTotal = weeklyStats?.totalMl ?? todayIntake;
+  const activeDayCount = days.filter((d: any) => (d?.totalMl ?? 0) > 0).length;
+  const weekAvg =
+    activeDayCount > 0
+      ? Math.round(weekTotal / activeDayCount)
+      : weekTotal > 0
+        ? weekTotal
+        : todayIntake;
+
+  const displayDays = isDemo
+    ? demoWeekData
+    : WEEKDAYS.map((label, i) => ({
+        label,
+        totalMl: days[i]?.totalMl || 0,
+      }));
+
+  const demoMax = Math.max(dailyGoal, ...displayDays.map(d => d.totalMl), 1);
+  const sel = selectedDay !== null ? displayDays[selectedDay] : null;
+
+  return (
+    <View>
+      
+      <Animated.View entering={FadeInDown.duration(400)} style={s.chartCard}>
+        <Text style={s.chartTitle}>Veckans intag</Text>
+        <View style={s.barChart}>
+          {displayDays.map((day, i) => (
+            <AnimatedBar
+              key={i}
+              value={day.totalMl}
+              maxValue={demoMax}
+              index={i}
+              label={day.label}
+              goal={dailyGoal}
+              selected={selectedDay === i}
+              onPress={() => {
+                Haptics.selectionAsync();
+                setSelectedDay(selectedDay === i ? null : i);
+              }}
+            />
+          ))}
+        </View>
+        
+        <View style={[s.goalLine, { bottom: dailyGoal > 0 ? Math.max(4, (dailyGoal / demoMax) * 140) + 24 : 24 }]}>
+          <View style={s.goalDash} />
+          <Text style={s.goalText}>{dailyGoal} ml</Text>
+        </View>
+      </Animated.View>
+
+      
+      {sel && (
+        <Animated.View entering={FadeInDown.duration(300)} style={s.dayDetailCard}>
+          <View style={s.dayDetailHeader}>
+            <Text style={s.dayDetailTitle}>{sel.label}</Text>
+            <TouchableOpacity onPress={() => setSelectedDay(null)} hitSlop={12}>
+              <Feather name="x" size={16} color={colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+          <View style={s.dayDetailRow}>
+            <View style={s.dayDetailItem}>
+              <Text style={s.dayDetailValue}>{sel.totalMl} ml</Text>
+              <Text style={s.dayDetailLabel}>druckit</Text>
+            </View>
+            <View style={s.dayDetailItem}>
+              <Text style={s.dayDetailValue}>{dailyGoal > 0 ? Math.round((sel.totalMl / dailyGoal) * 100) : 0}%</Text>
+              <Text style={s.dayDetailLabel}>av mål</Text>
+            </View>
+            <View style={s.dayDetailItem}>
+              <Text style={[s.dayDetailValue, { color: sel.totalMl >= dailyGoal ? colors.success : colors.accent }]}>
+                {sel.totalMl >= dailyGoal ? "Klart!" : `${dailyGoal - sel.totalMl} ml kvar`}
+              </Text>
+              <Text style={s.dayDetailLabel}>status</Text>
+            </View>
+          </View>
+        </Animated.View>
+      )}
+
+      
+      <Animated.View entering={FadeInDown.duration(400).delay(100)} style={s.statsRow}>
+        <View style={s.statBox}>
+          <AnimatedNumber style={s.statValue} value={weekTotal / 1000} decimals={1} suffix="L" />
+          <Text style={s.statLabel}>totalt</Text>
+        </View>
+        <View style={s.statBox}>
+          <AnimatedNumber style={s.statValue} value={weekAvg} suffix=" ml" />
+          <Text style={s.statLabel}>snitt/dag</Text>
+        </View>
+        <View style={s.statBox}>
+          <AnimatedNumber
+            style={s.statValue}
+            value={weeklyGoalMl > 0 ? Math.round((weekTotal / weeklyGoalMl) * 100) : 0}
+            suffix="%"
+          />
+          <Text style={s.statLabel}>veckomål</Text>
+        </View>
+      </Animated.View>
+    </View>
+  );
+});
+
+interface ManadTabProps {
+  monthlyStats: any;
+  demoMonthData: number[];
+  isDemo: boolean;
+  dailyGoal: number;
+}
+
+const ManadTab = React.memo(function ManadTab({
+  monthlyStats,
+  demoMonthData,
+  isDemo,
+  dailyGoal,
+}: ManadTabProps) {
+  const [selectedMonthDay, setSelectedMonthDay] = useState<number | null>(null);
+  const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+  const today = new Date().getDate();
+
+  const realMonthDays = Array.from({ length: daysInMonth }, () => 0);
+  const breakdown = (monthlyStats as any)?.dailyBreakdown as
+    | Array<{ day: number; totalMl: number }>
+    | undefined;
+  if (breakdown) {
+    for (const d of breakdown) {
+      const idx = d.day - 1;
+      if (idx >= 0 && idx < daysInMonth) {
+        realMonthDays[idx] = d.totalMl;
+      }
+    }
+  }
+  const monthDays = isDemo ? demoMonthData : realMonthDays;
+
+  const monthTotal = monthDays.reduce((a, b) => a + b, 0);
+  const activeDays = monthDays.filter(d => d > 0).length;
+  const monthAvg = activeDays > 0 ? Math.round(monthTotal / activeDays) : 0;
+
+  return (
+    <View>
+      
+      <Animated.View entering={FadeInDown.duration(400)} style={s.chartCard}>
+        <Text style={s.chartTitle}>Månadsöversikt</Text>
+        <View style={s.dayGrid}>
+          {monthDays.map((ml, i) => {
+            const pct = dailyGoal > 0 ? ml / dailyGoal : 0;
+            const bg = ml === 0
+              ? colors.surface
+              : pct >= 1
+                ? colors.success
+                : pct >= 0.5
+                  ? colors.accent
+                  : colors.accent + "60";
+            const isToday = i + 1 === today;
+            const isSel = selectedMonthDay === i;
+            return (
+              <TouchableOpacity
+                key={i}
+                style={s.dayCell}
+                onPress={() => {
+                  if (ml > 0) {
+                    Haptics.selectionAsync();
+                    setSelectedMonthDay(isSel ? null : i);
+                  }
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={[s.dayDot, { backgroundColor: bg }, isToday && s.dayDotToday, isSel && { borderWidth: 2, borderColor: colors.textPrimary }]}>
+                  <Text style={s.dayNum}>{i + 1}</Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        
+        {selectedMonthDay !== null && monthDays[selectedMonthDay] > 0 && (
+          <Animated.View entering={FadeInDown.duration(200)} style={s.dayDetailInline}>
+            <Text style={s.dayDetailInlineTitle}>
+              {selectedMonthDay + 1}/{new Date().getMonth() + 1}
+            </Text>
+            <Text style={s.dayDetailInlineValue}>{monthDays[selectedMonthDay]} ml</Text>
+            <Text style={s.dayDetailInlinePct}>
+              {dailyGoal > 0 ? Math.round((monthDays[selectedMonthDay] / dailyGoal) * 100) : 0}% av mål
+            </Text>
+          </Animated.View>
+        )}
+
+        <View style={s.legendRow}>
+          <View style={s.legendItem}>
+            <View style={[s.legendDot, { backgroundColor: colors.success }]} />
+            <Text style={s.legendText}>Mål nått</Text>
+          </View>
+          <View style={s.legendItem}>
+            <View style={[s.legendDot, { backgroundColor: colors.accent }]} />
+            <Text style={s.legendText}>Delvis</Text>
+          </View>
+          <View style={s.legendItem}>
+            <View style={[s.legendDot, { backgroundColor: colors.surface }]} />
+            <Text style={s.legendText}>Ingen data</Text>
+          </View>
+        </View>
+      </Animated.View>
+
+      
+      <Animated.View entering={FadeInDown.duration(400).delay(100)} style={s.statsRow}>
+        <View style={s.statBox}>
+          <Text style={s.statValue}>{(monthTotal / 1000).toFixed(1)}L</Text>
+          <Text style={s.statLabel}>totalt</Text>
+        </View>
+        <View style={s.statBox}>
+          <Text style={s.statValue}>{monthAvg} ml</Text>
+          <Text style={s.statLabel}>snitt/dag</Text>
+        </View>
+        <View style={s.statBox}>
+          <Text style={s.statValue}>{activeDays}</Text>
+          <Text style={s.statLabel}>aktiva dagar</Text>
+        </View>
+      </Animated.View>
+    </View>
+  );
+});
+
+interface TotaltTabProps {
+  isDemo: boolean;
+  todayIntake: number;
+  allTimeStats: any;
+  streakStats: any;
+  streak: number;
+}
+
+const MILESTONES = [
+  { threshold: 10000, label: "10 liter" },
+  { threshold: 50000, label: "50 liter" },
+  { threshold: 100000, label: "100 liter" },
+  { threshold: 500000, label: "500 liter" },
+  { threshold: 1000000, label: "1 000 liter" },
+];
+
+const TotaltTab = React.memo(function TotaltTab({
+  isDemo,
+  todayIntake,
+  allTimeStats,
+  streakStats,
+  streak,
+}: TotaltTabProps) {
+  const totalMl = isDemo ? todayIntake : (allTimeStats?.totalMl ?? 0);
+  const avgDaily = isDemo ? todayIntake : ((allTimeStats as any)?.averageDailyMl ?? 0);
+  const daysTracked = isDemo ? 1 : ((allTimeStats as any)?.activeDays ?? 0);
+  const bestStreak = isDemo ? 0 : (streakStats?.longestStreak ?? 0);
+
+  return (
+    <View>
+      
+      <Animated.View entering={FadeInDown.duration(400)} style={s.statsRow}>
+        <View style={s.statBox}>
+          <Ionicons name="water" size={20} color={colors.accent} />
+          <Text style={s.statValue}>{(totalMl / 1000).toFixed(1)}L</Text>
+          <Text style={s.statLabel}>totalt</Text>
+        </View>
+        <View style={s.statBox}>
+          <Feather name="calendar" size={20} color={colors.accent} />
+          <Text style={s.statValue}>{daysTracked}</Text>
+          <Text style={s.statLabel}>dagar</Text>
+        </View>
+        <View style={s.statBox}>
+          <Feather name="trending-up" size={20} color={colors.accent} />
+          <Text style={s.statValue}>{avgDaily} ml</Text>
+          <Text style={s.statLabel}>snitt/dag</Text>
+        </View>
+      </Animated.View>
+
+      {bestStreak > 0 && (
+        <Animated.View entering={FadeInDown.duration(400).delay(100)} style={s.streakCard}>
+          <Ionicons name="trophy" size={24} color={colors.warning} />
+          <View style={{ marginLeft: 12 }}>
+            <Text style={s.streakValue}>Bästa streak: {bestStreak} dagar</Text>
+            <Text style={s.streakLabel}>Nuvarande: {streak} dagar</Text>
+          </View>
+        </Animated.View>
+      )}
+
+      
+      <Animated.View entering={FadeInDown.duration(400).delay(200)} style={s.chartCard}>
+        <Text style={s.chartTitle}>Milstolpar</Text>
+        {MILESTONES.map((ms, i) => {
+          const reached = totalMl >= ms.threshold;
+          const progress = Math.min(1, totalMl / ms.threshold);
+          return (
+            <View key={i} style={s.milestoneRow}>
+              <Feather
+                name={reached ? "check-circle" : "circle"}
+                size={18}
+                color={reached ? colors.success : colors.textMuted}
+              />
+              <Text style={[s.milestoneLabel, reached && { color: colors.success }]}>
+                {ms.label}
+              </Text>
+              <View style={s.milestoneBar}>
+                <View style={[s.milestoneFill, { width: `${progress * 100}%`, backgroundColor: reached ? colors.success : colors.accent }]} />
+              </View>
+            </View>
+          );
+        })}
+      </Animated.View>
+    </View>
+  );
+});
+
 export default function Stats() {
-  const { token } = useAuthStore();
-  const store = useHydrationStore();
-  const demoStore = useDemoStore();
+  const token = useAuthStore((state) => state.token);
+  const dailyGoalMl = useHydrationStore((s) => s.dailyGoalMl);
+  const weeklyGoalMl = useHydrationStore((s) => s.weeklyGoalMl);
+  const storeTodayIntakeMl = useHydrationStore((s) => s.todayIntakeMl);
+  const demoMode = useHydrationStore((s) => s.demoMode);
+
   const weightData = useWeightData();
   const [activeTab, setActiveTab] = useState<TabKey>("idag");
 
-  const isDemo = store.demoMode;
+  const isDemo = demoMode;
 
   const skip = "skip" as const;
-  const todayStats = useQuery(api.stats.getToday, !isDemo && token ? { token } : skip);
   const weeklyStats = useQuery(api.stats.getWeekly, !isDemo && token ? { token } : skip);
+  const monthlyStats = useQuery(api.stats.getMonthly, !isDemo && token ? { token } : skip);
   const streakStats = useQuery(api.stats.getStreak, !isDemo && token ? { token } : skip);
   const allTimeStats = useQuery(api.stats.getAllTime, !isDemo && token ? { token } : skip);
 
-  const todayIntake = weightData.todayIntakeMl;
-  const dailyGoal = store.dailyGoalMl;
+  const todayIntake = isDemo ? weightData.todayIntakeMl : storeTodayIntakeMl;
+  const dailyGoal = dailyGoalMl;
   const dailyPct = dailyGoal > 0 ? Math.min(100, Math.round((todayIntake / dailyGoal) * 100)) : 0;
   const streak = isDemo ? 0 : (streakStats?.currentStreak || 0);
 
@@ -120,328 +522,6 @@ export default function Stats() {
       return Math.round(dailyGoal * (0.4 + seed * 0.08));
     });
   }, [dailyGoal, todayIntake]);
-
-  function IdagTab() {
-    const ringProgress = useSharedValue(0);
-    useEffect(() => {
-      ringProgress.value = withSpring(dailyPct / 100, { damping: 16, stiffness: 80 });
-    }, [dailyPct]);
-
-    const ringStyle = useAnimatedStyle(() => ({
-      width: `${ringProgress.value * 100}%`,
-    }));
-
-    return (
-      <View>
-        
-        <Animated.View entering={FadeInDown.duration(400)} style={s.todayHero}>
-          <Text style={s.todayPct}>{dailyPct}%</Text>
-          <Text style={s.todayLabel}>av dagens mål</Text>
-          <View style={s.todayBar}>
-            <Animated.View style={[s.todayBarFill, ringStyle]} />
-          </View>
-        </Animated.View>
-
-        
-        <Animated.View entering={FadeInDown.duration(400).delay(100)} style={s.statsRow}>
-          <View style={s.statBox}>
-            <Ionicons name="water" size={20} color={colors.accent} />
-            <Text style={s.statValue}>{todayIntake} ml</Text>
-            <Text style={s.statLabel}>druckit</Text>
-          </View>
-          <View style={s.statBox}>
-            <Feather name="target" size={20} color={colors.warning} />
-            <Text style={s.statValue}>{dailyGoal} ml</Text>
-            <Text style={s.statLabel}>mål</Text>
-          </View>
-          <View style={s.statBox}>
-            <Ionicons name="water-outline" size={20} color={colors.accent} />
-            <Text style={s.statValue}>{weightData.waterRemainingMl} ml</Text>
-            <Text style={s.statLabel}>i flaskan</Text>
-          </View>
-        </Animated.View>
-
-        
-        {streak > 0 && (
-          <Animated.View entering={FadeInDown.duration(400).delay(200)} style={s.streakCard}>
-            <Ionicons name="flame" size={24} color={colors.warning} />
-            <View style={{ marginLeft: 12 }}>
-              <Text style={s.streakValue}>{streak} dagar i rad</Text>
-              <Text style={s.streakLabel}>Du håller din streak igång!</Text>
-            </View>
-          </Animated.View>
-        )}
-
-        {isDemo && (
-          <Animated.View entering={FadeInDown.duration(400).delay(300)} style={s.demoTag}>
-            <Feather name="play-circle" size={14} color={colors.warning} />
-            <Text style={s.demoTagText}>Demoläge - simulerad data</Text>
-          </Animated.View>
-        )}
-      </View>
-    );
-  }
-
-  function VeckaTab() {
-    const [selectedDay, setSelectedDay] = useState<number | null>(null);
-    const days = (weeklyStats as any)?.dailyBreakdown ?? [];
-    const weekTotal = weeklyStats?.totalMl ?? todayIntake;
-    const weekAvg = days.length > 0 ? Math.round(weekTotal / Math.max(days.length, 1)) : todayIntake;
-
-    const displayDays = isDemo
-      ? demoWeekData
-      : WEEKDAYS.map((label, i) => ({
-          label,
-          totalMl: days[i]?.totalMl || 0,
-        }));
-
-    const demoMax = Math.max(dailyGoal, ...displayDays.map(d => d.totalMl), 1);
-    const sel = selectedDay !== null ? displayDays[selectedDay] : null;
-
-    return (
-      <View>
-        
-        <Animated.View entering={FadeInDown.duration(400)} style={s.chartCard}>
-          <Text style={s.chartTitle}>Veckans intag</Text>
-          <View style={s.barChart}>
-            {displayDays.map((day, i) => (
-              <AnimatedBar
-                key={i}
-                value={day.totalMl}
-                maxValue={demoMax}
-                index={i}
-                label={day.label}
-                goal={dailyGoal}
-                selected={selectedDay === i}
-                onPress={() => {
-                  Haptics.selectionAsync();
-                  setSelectedDay(selectedDay === i ? null : i);
-                }}
-              />
-            ))}
-          </View>
-          
-          <View style={[s.goalLine, { bottom: dailyGoal > 0 ? Math.max(4, (dailyGoal / demoMax) * 140) + 24 : 24 }]}>
-            <View style={s.goalDash} />
-            <Text style={s.goalText}>{dailyGoal} ml</Text>
-          </View>
-        </Animated.View>
-
-        
-        {sel && (
-          <Animated.View entering={FadeInDown.duration(300)} style={s.dayDetailCard}>
-            <View style={s.dayDetailHeader}>
-              <Text style={s.dayDetailTitle}>{sel.label}</Text>
-              <TouchableOpacity onPress={() => setSelectedDay(null)} hitSlop={12}>
-                <Feather name="x" size={16} color={colors.textMuted} />
-              </TouchableOpacity>
-            </View>
-            <View style={s.dayDetailRow}>
-              <View style={s.dayDetailItem}>
-                <Text style={s.dayDetailValue}>{sel.totalMl} ml</Text>
-                <Text style={s.dayDetailLabel}>druckit</Text>
-              </View>
-              <View style={s.dayDetailItem}>
-                <Text style={s.dayDetailValue}>{dailyGoal > 0 ? Math.round((sel.totalMl / dailyGoal) * 100) : 0}%</Text>
-                <Text style={s.dayDetailLabel}>av mål</Text>
-              </View>
-              <View style={s.dayDetailItem}>
-                <Text style={[s.dayDetailValue, { color: sel.totalMl >= dailyGoal ? colors.success : colors.accent }]}>
-                  {sel.totalMl >= dailyGoal ? "Klart!" : `${dailyGoal - sel.totalMl} ml kvar`}
-                </Text>
-                <Text style={s.dayDetailLabel}>status</Text>
-              </View>
-            </View>
-          </Animated.View>
-        )}
-
-        
-        <Animated.View entering={FadeInDown.duration(400).delay(100)} style={s.statsRow}>
-          <View style={s.statBox}>
-            <Text style={s.statValue}>{(weekTotal / 1000).toFixed(1)}L</Text>
-            <Text style={s.statLabel}>totalt</Text>
-          </View>
-          <View style={s.statBox}>
-            <Text style={s.statValue}>{weekAvg} ml</Text>
-            <Text style={s.statLabel}>snitt/dag</Text>
-          </View>
-          <View style={s.statBox}>
-            <Text style={s.statValue}>{store.weeklyGoalMl > 0 ? Math.round((weekTotal / store.weeklyGoalMl) * 100) : 0}%</Text>
-            <Text style={s.statLabel}>veckomål</Text>
-          </View>
-        </Animated.View>
-      </View>
-    );
-  }
-
-  function ManadTab() {
-    const [selectedMonthDay, setSelectedMonthDay] = useState<number | null>(null);
-    const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
-    const today = new Date().getDate();
-
-    const monthDays = isDemo ? demoMonthData : Array.from({ length: daysInMonth }, () => 0);
-
-    const monthTotal = monthDays.reduce((a, b) => a + b, 0);
-    const activeDays = monthDays.filter(d => d > 0).length;
-    const monthAvg = activeDays > 0 ? Math.round(monthTotal / activeDays) : 0;
-
-    return (
-      <View>
-        
-        <Animated.View entering={FadeInDown.duration(400)} style={s.chartCard}>
-          <Text style={s.chartTitle}>Månadsöversikt</Text>
-          <View style={s.dayGrid}>
-            {monthDays.map((ml, i) => {
-              const pct = dailyGoal > 0 ? ml / dailyGoal : 0;
-              const bg = ml === 0
-                ? colors.surface
-                : pct >= 1
-                  ? colors.success
-                  : pct >= 0.5
-                    ? colors.accent
-                    : colors.accent + "60";
-              const isToday = i + 1 === today;
-              const isSel = selectedMonthDay === i;
-              return (
-                <TouchableOpacity
-                  key={i}
-                  style={s.dayCell}
-                  onPress={() => {
-                    if (ml > 0) {
-                      Haptics.selectionAsync();
-                      setSelectedMonthDay(isSel ? null : i);
-                    }
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <View style={[s.dayDot, { backgroundColor: bg }, isToday && s.dayDotToday, isSel && { borderWidth: 2, borderColor: colors.textPrimary }]}>
-                    <Text style={s.dayNum}>{i + 1}</Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          
-          {selectedMonthDay !== null && monthDays[selectedMonthDay] > 0 && (
-            <Animated.View entering={FadeInDown.duration(200)} style={s.dayDetailInline}>
-              <Text style={s.dayDetailInlineTitle}>
-                {selectedMonthDay + 1}/{new Date().getMonth() + 1}
-              </Text>
-              <Text style={s.dayDetailInlineValue}>{monthDays[selectedMonthDay]} ml</Text>
-              <Text style={s.dayDetailInlinePct}>
-                {dailyGoal > 0 ? Math.round((monthDays[selectedMonthDay] / dailyGoal) * 100) : 0}% av mål
-              </Text>
-            </Animated.View>
-          )}
-
-          <View style={s.legendRow}>
-            <View style={s.legendItem}>
-              <View style={[s.legendDot, { backgroundColor: colors.success }]} />
-              <Text style={s.legendText}>Mål nått</Text>
-            </View>
-            <View style={s.legendItem}>
-              <View style={[s.legendDot, { backgroundColor: colors.accent }]} />
-              <Text style={s.legendText}>Delvis</Text>
-            </View>
-            <View style={s.legendItem}>
-              <View style={[s.legendDot, { backgroundColor: colors.surface }]} />
-              <Text style={s.legendText}>Ingen data</Text>
-            </View>
-          </View>
-        </Animated.View>
-
-        
-        <Animated.View entering={FadeInDown.duration(400).delay(100)} style={s.statsRow}>
-          <View style={s.statBox}>
-            <Text style={s.statValue}>{(monthTotal / 1000).toFixed(1)}L</Text>
-            <Text style={s.statLabel}>totalt</Text>
-          </View>
-          <View style={s.statBox}>
-            <Text style={s.statValue}>{monthAvg} ml</Text>
-            <Text style={s.statLabel}>snitt/dag</Text>
-          </View>
-          <View style={s.statBox}>
-            <Text style={s.statValue}>{activeDays}</Text>
-            <Text style={s.statLabel}>aktiva dagar</Text>
-          </View>
-        </Animated.View>
-      </View>
-    );
-  }
-
-  function TotaltTab() {
-    const totalMl = isDemo ? todayIntake : (allTimeStats?.totalMl ?? 0);
-    const totalDrinks = isDemo ? 1 : ((allTimeStats as any)?.totalDrinks ?? 0);
-    const avgDaily = isDemo ? todayIntake : ((allTimeStats as any)?.averageDailyMl ?? 0);
-    const daysTracked = isDemo ? 1 : ((allTimeStats as any)?.activeDays ?? 0);
-    const bestStreak = isDemo ? 0 : (streakStats?.longestStreak ?? 0);
-
-    const MILESTONES = [
-      { threshold: 10000, label: "10 liter" },
-      { threshold: 50000, label: "50 liter" },
-      { threshold: 100000, label: "100 liter" },
-      { threshold: 500000, label: "500 liter" },
-      { threshold: 1000000, label: "1 000 liter" },
-    ];
-
-    return (
-      <View>
-        
-        <Animated.View entering={FadeInDown.duration(400)} style={s.statsRow}>
-          <View style={s.statBox}>
-            <Ionicons name="water" size={20} color={colors.accent} />
-            <Text style={s.statValue}>{(totalMl / 1000).toFixed(1)}L</Text>
-            <Text style={s.statLabel}>totalt</Text>
-          </View>
-          <View style={s.statBox}>
-            <Feather name="calendar" size={20} color={colors.accent} />
-            <Text style={s.statValue}>{daysTracked}</Text>
-            <Text style={s.statLabel}>dagar</Text>
-          </View>
-          <View style={s.statBox}>
-            <Feather name="trending-up" size={20} color={colors.accent} />
-            <Text style={s.statValue}>{avgDaily} ml</Text>
-            <Text style={s.statLabel}>snitt/dag</Text>
-          </View>
-        </Animated.View>
-
-        {bestStreak > 0 && (
-          <Animated.View entering={FadeInDown.duration(400).delay(100)} style={s.streakCard}>
-            <Ionicons name="trophy" size={24} color={colors.warning} />
-            <View style={{ marginLeft: 12 }}>
-              <Text style={s.streakValue}>Bästa streak: {bestStreak} dagar</Text>
-              <Text style={s.streakLabel}>Nuvarande: {streak} dagar</Text>
-            </View>
-          </Animated.View>
-        )}
-
-        
-        <Animated.View entering={FadeInDown.duration(400).delay(200)} style={s.chartCard}>
-          <Text style={s.chartTitle}>Milstolpar</Text>
-          {MILESTONES.map((ms, i) => {
-            const reached = totalMl >= ms.threshold;
-            const progress = Math.min(1, totalMl / ms.threshold);
-            return (
-              <View key={i} style={s.milestoneRow}>
-                <Feather
-                  name={reached ? "check-circle" : "circle"}
-                  size={18}
-                  color={reached ? colors.success : colors.textMuted}
-                />
-                <Text style={[s.milestoneLabel, reached && { color: colors.success }]}>
-                  {ms.label}
-                </Text>
-                <View style={s.milestoneBar}>
-                  <View style={[s.milestoneFill, { width: `${progress * 100}%`, backgroundColor: reached ? colors.success : colors.accent }]} />
-                </View>
-              </View>
-            );
-          })}
-        </Animated.View>
-      </View>
-    );
-  }
 
   return (
     <SafeAreaView style={s.container} edges={["top"]}>
@@ -478,10 +558,43 @@ export default function Stats() {
         </View>
 
         
-        {activeTab === "idag" && <IdagTab />}
-        {activeTab === "vecka" && <VeckaTab />}
-        {activeTab === "manad" && <ManadTab />}
-        {activeTab === "totalt" && <TotaltTab />}
+        {activeTab === "idag" && (
+          <IdagTab
+            dailyPct={dailyPct}
+            todayIntake={todayIntake}
+            dailyGoal={dailyGoal}
+            waterRemaining={weightData.waterRemainingMl}
+            streak={streak}
+            isDemo={isDemo}
+          />
+        )}
+        {activeTab === "vecka" && (
+          <VeckaTab
+            weeklyStats={weeklyStats}
+            todayIntake={todayIntake}
+            demoWeekData={demoWeekData}
+            isDemo={isDemo}
+            dailyGoal={dailyGoal}
+            weeklyGoalMl={weeklyGoalMl}
+          />
+        )}
+        {activeTab === "manad" && (
+          <ManadTab
+            monthlyStats={monthlyStats}
+            demoMonthData={demoMonthData}
+            isDemo={isDemo}
+            dailyGoal={dailyGoal}
+          />
+        )}
+        {activeTab === "totalt" && (
+          <TotaltTab
+            isDemo={isDemo}
+            todayIntake={todayIntake}
+            allTimeStats={allTimeStats}
+            streakStats={streakStats}
+            streak={streak}
+          />
+        )}
       </ScrollView>
     </SafeAreaView>
   );

@@ -127,6 +127,7 @@ export const useHydrationStore = create<HydrationState>((set, get) => ({
 
   resetCalibration: async () => {
     set({
+      activeBottleId: null,
       fullWeightG: 0,
       emptyWeightG: 0,
       isCalibrated: false,
@@ -165,8 +166,14 @@ export const useHydrationStore = create<HydrationState>((set, get) => ({
   },
 
   addIntake: async (ml: number) => {
-    const current = get().todayIntakeMl;
-    set({ todayIntakeMl: current + ml });
+    const state = get();
+    const today = todayDateString();
+    const rolledOver = state.lastResetDate !== today;
+    const base = rolledOver ? 0 : state.todayIntakeMl;
+    set({
+      todayIntakeMl: base + ml,
+      lastResetDate: today,
+    });
     await persist(getPersistedFields(get()));
   },
 

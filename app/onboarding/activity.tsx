@@ -27,19 +27,19 @@ const ACTIVITY_LEVELS = [
   {
     value: "light",
     label: "Lätt",
-    description: "Träning 1\u20133 dagar/vecka",
+    description: "Träning 1–3 dagar/vecka",
     iconName: "walk" as const,
   },
   {
     value: "moderate",
     label: "Måttlig",
-    description: "Träning 3\u20135 dagar/vecka",
+    description: "Träning 3–5 dagar/vecka",
     iconName: "run" as const,
   },
   {
     value: "active",
     label: "Aktiv",
-    description: "Träning 6\u20137 dagar/vecka",
+    description: "Träning 6–7 dagar/vecka",
     iconName: "run-fast" as const,
   },
   {

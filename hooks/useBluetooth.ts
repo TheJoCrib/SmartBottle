@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { bluetoothService, Device } from "../services/bluetooth";
 import { useBottleStore } from "../stores/bottleStore";
 
@@ -8,13 +8,11 @@ interface UseBluetoothReturn {
   isConnected: boolean;
   devices: Device[];
   connectedDeviceId: string | null;
-  batteryLevel: number | null;
   error: string | null;
   scan: () => Promise<void>;
   stopScan: () => void;
   connect: (deviceId: string) => Promise<void>;
   disconnect: () => Promise<void>;
-  refreshBattery: () => Promise<void>;
 }
 
 export function useBluetooth(): UseBluetoothReturn {
@@ -22,9 +20,7 @@ export function useBluetooth(): UseBluetoothReturn {
   const [isConnecting, setIsConnecting] = useState(false);
   const [devices, setDevices] = useState<Device[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const { isConnected, connectedDeviceId, batteryLevel } = useBottleStore();
-
-  const batteryIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const { isConnected, connectedDeviceId } = useBottleStore();
 
   const scan = useCallback(async () => {
     setError(null);
@@ -59,15 +55,6 @@ export function useBluetooth(): UseBluetoothReturn {
 
       await bluetoothService.subscribeToWeight((weightG) => {
       });
-
-      await bluetoothService.readBatteryLevel();
-
-      batteryIntervalRef.current = setInterval(async () => {
-        try {
-          await bluetoothService.readBatteryLevel();
-        } catch {
-        }
-      }, 60000);
     } catch (err: any) {
       setError(err.message || "Failed to connect");
     } finally {
@@ -76,26 +63,7 @@ export function useBluetooth(): UseBluetoothReturn {
   }, []);
 
   const disconnect = useCallback(async () => {
-    if (batteryIntervalRef.current) {
-      clearInterval(batteryIntervalRef.current);
-      batteryIntervalRef.current = null;
-    }
     await bluetoothService.disconnect();
-  }, []);
-
-  const refreshBattery = useCallback(async () => {
-    try {
-      await bluetoothService.readBatteryLevel();
-    } catch {
-    }
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (batteryIntervalRef.current) {
-        clearInterval(batteryIntervalRef.current);
-      }
-    };
   }, []);
 
   return {
@@ -104,12 +72,10 @@ export function useBluetooth(): UseBluetoothReturn {
     isConnected,
     devices,
     connectedDeviceId,
-    batteryLevel,
     error,
     scan,
     stopScan,
     connect,
     disconnect,
-    refreshBattery,
   };
 }

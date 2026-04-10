@@ -1,216 +1,300 @@
 
-#include <BLEDevice.h>
-#include <BLEServer.h>
-#include <BLEUtils.h>
-#include <BLE2902.h>
+#include <ArduinoBLE.h>
+#include <EEPROM.h>
 #include "HX711.h"
 
-#define HX711_DT_PIN 16
-#define HX711_SCK_PIN 17
+const int LOADCELL_DOUT_PIN = 2;
+const int LOADCELL_SCK_PIN  = 3;
 
-#define BATTERY_PIN 34
+const float         NOISE_THRESHOLD           = 5.0f;
+const unsigned long WEIGHT_UPDATE_INTERVAL_MS = 1000;
 
-#define LED_PIN 2
+#define SERVICE_UUID      "12345678-1234-5678-1234-56789abcdef0"
+#define WEIGHT_CHAR_UUID  "12345678-1234-5678-1234-56789abcdef1"
+#define COMMAND_CHAR_UUID "12345678-1234-5678-1234-56789abcdef3"
 
-#define CALIBRATION_FACTOR 420.0
+const uint32_t EEPROM_MAGIC     = 0xC0FFEE01;
+const int      EEPROM_BASE_ADDR = 0;
 
-#define WEIGHT_UPDATE_INTERVAL 1000
-#define WEIGHT_SAMPLES 5
-
-#define BATTERY_MAX_VOLTAGE 4.2
-#define BATTERY_MIN_VOLTAGE 3.3
-#define BATTERY_DIVIDER_RATIO 2.0
-
-#define SERVICE_UUID        "12345678-1234-5678-1234-56789abcdef0"
-#define WEIGHT_CHAR_UUID    "12345678-1234-5678-1234-56789abcdef1"
-#define BATTERY_CHAR_UUID   "12345678-1234-5678-1234-56789abcdef2"
-
-HX711 scale;
-
-BLEServer* pServer = NULL;
-BLECharacteristic* pWeightCharacteristic = NULL;
-BLECharacteristic* pBatteryCharacteristic = NULL;
-
-bool deviceConnected = false;
-bool oldDeviceConnected = false;
-unsigned long lastWeightUpdate = 0;
-unsigned long lastBatteryUpdate = 0;
-
-float currentWeight = 0;
-uint8_t batteryLevel = 100;
-
-class ServerCallbacks : public BLEServerCallbacks {
-  void onConnect(BLEServer* pServer) {
-    deviceConnected = true;
-    digitalWrite(LED_PIN, HIGH);
-    Serial.println("Device connected");
-  }
-
-  void onDisconnect(BLEServer* pServer) {
-    deviceConnected = false;
-    digitalWrite(LED_PIN, LOW);
-    Serial.println("Device disconnected");
-  }
+struct CalibrationRecord {
+  uint32_t magic;
+  float    scaleFactor;
+  long     tareOffset;
 };
 
+HX711  scale;
+String inputBuffer = "";
+
+BLEService        smartBottleService(SERVICE_UUID);
+BLECharacteristic weightCharacteristic(WEIGHT_CHAR_UUID,  BLERead | BLENotify, 4);
+BLECharacteristic commandCharacteristic(COMMAND_CHAR_UUID, BLEWrite,            1);
+
+bool          bleReady         = false;
+bool          centralConnected = false;
+unsigned long lastWeightUpdate = 0;
+
+void setupBLE();
+void runFirstTimeCalibration();
+void handleSerialCommands();
+void handleBleCommand();
+void handleTareCommand();
+void handleRecalibrationCommand();
+void performCalibration(float knownG);
+bool loadCalibration();
+void saveCalibration();
+void clearCalibration();
+void broadcastWeight(float grams);
+
 void setup() {
-  Serial.begin(115200);
-  Serial.println("\n=== SmartBottle Starting ===");
+  Serial.begin(57600);
+  const unsigned long t0 = millis();
+  while (!Serial && millis() - t0 < 1500) { }
 
-  pinMode(LED_PIN, OUTPUT);
-  digitalWrite(LED_PIN, LOW);
+  scale.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
 
-  analogReadResolution(12);
-  analogSetAttenuation(ADC_11db);
+  Serial.println(F("================================="));
+  Serial.println(F("        WATER SCALE READY"));
+  Serial.println(F("================================="));
 
-  Serial.println("Initializing HX711...");
-  scale.begin(HX711_DT_PIN, HX711_SCK_PIN);
-
-  while (!scale.is_ready()) {
-    Serial.println("Waiting for HX711...");
-    delay(100);
+  if (loadCalibration()) {
+    Serial.println(F("Loaded calibration from EEPROM."));
+    Serial.print(F("  scale factor = "));
+    Serial.println(scale.get_scale(), 4);
+    Serial.print(F("  tare offset  = "));
+    Serial.println(scale.get_offset());
+    Serial.println(F(""));
+    Serial.println(F("Commands:"));
+    Serial.println(F("  t = re-zero (tare)"));
+    Serial.println(F("  c = re-calibrate with a known weight"));
+    Serial.println(F("  e = erase saved calibration"));
+    Serial.println(F("================================="));
+  } else {
+    Serial.println(F("No saved calibration. Running first-time setup..."));
+    runFirstTimeCalibration();
   }
 
-  scale.set_scale(CALIBRATION_FACTOR);
-
-  Serial.println("Taring scale... Remove all weight!");
-  delay(2000);
-  scale.tare();
-  Serial.println("Scale tared!");
-
   setupBLE();
-
-  Serial.println("=== SmartBottle Ready ===");
-  Serial.println("Waiting for connection...");
-}
-
-void setupBLE() {
-  Serial.println("Initializing BLE...");
-
-  BLEDevice::init("SmartBottle");
-
-  pServer = BLEDevice::createServer();
-  pServer->setCallbacks(new ServerCallbacks());
-
-  BLEService* pService = pServer->createService(SERVICE_UUID);
-
-  pWeightCharacteristic = pService->createCharacteristic(
-    WEIGHT_CHAR_UUID,
-    BLECharacteristic::PROPERTY_READ |
-    BLECharacteristic::PROPERTY_NOTIFY
-  );
-  pWeightCharacteristic->addDescriptor(new BLE2902());
-
-  pBatteryCharacteristic = pService->createCharacteristic(
-    BATTERY_CHAR_UUID,
-    BLECharacteristic::PROPERTY_READ
-  );
-
-  pService->start();
-
-  BLEAdvertising* pAdvertising = BLEDevice::getAdvertising();
-  pAdvertising->addServiceUUID(SERVICE_UUID);
-  pAdvertising->setScanResponse(true);
-  pAdvertising->setMinPreferred(0x06);
-  pAdvertising->setMinPreferred(0x12);
-  BLEDevice::startAdvertising();
-
-  Serial.println("BLE initialized and advertising");
+  Serial.println(F("Ready. Broadcasting weight over BLE + Serial."));
 }
 
 void loop() {
-  unsigned long currentMillis = millis();
+  if (bleReady) BLE.poll();
 
-  if (currentMillis - lastWeightUpdate >= WEIGHT_UPDATE_INTERVAL) {
-    lastWeightUpdate = currentMillis;
-    readAndSendWeight();
+  BLEDevice central = BLE.central();
+  const bool connectedNow = central && central.connected();
+  if (connectedNow && !centralConnected) {
+    centralConnected = true;
+    Serial.print(F("[BLE] Connected to "));
+    Serial.println(central.address());
+  } else if (!connectedNow && centralConnected) {
+    centralConnected = false;
+    Serial.println(F("[BLE] Disconnected"));
   }
 
-  if (currentMillis - lastBatteryUpdate >= 30000) {
-    lastBatteryUpdate = currentMillis;
-    updateBatteryLevel();
-  }
+  handleSerialCommands();
+  handleBleCommand();
 
-  if (!deviceConnected && oldDeviceConnected) {
-    delay(500);
-    pServer->startAdvertising();
-    Serial.println("Restarting advertising...");
-    oldDeviceConnected = deviceConnected;
-  }
+  const unsigned long now = millis();
+  if (now - lastWeightUpdate >= WEIGHT_UPDATE_INTERVAL_MS) {
+    lastWeightUpdate = now;
 
-  if (deviceConnected && !oldDeviceConnected) {
-    oldDeviceConnected = deviceConnected;
-  }
+    float reading = scale.get_units(10);
+    if (fabs(reading) < NOISE_THRESHOLD) reading = 0.0f;
 
-  delay(10);
+    Serial.print(F("HX711 reading: "));
+    Serial.println(reading);
+
+    if (centralConnected) {
+      broadcastWeight(reading);
+    }
+  }
 }
 
-void readAndSendWeight() {
-  if (!scale.is_ready()) {
-    Serial.println("HX711 not ready");
+void setupBLE() {
+  Serial.println(F("[BLE] Initializing..."));
+  if (!BLE.begin()) {
+    Serial.println(F("[BLE] BLE.begin() FAILED - check ArduinoBLE install / board firmware."));
     return;
   }
 
-  float totalWeight = 0;
-  int validSamples = 0;
+  BLE.setLocalName("SmartBottle");
+  BLE.setDeviceName("SmartBottle");
+  BLE.setAdvertisedService(smartBottleService);
 
-  for (int i = 0; i < WEIGHT_SAMPLES; i++) {
-    if (scale.is_ready()) {
-      float reading = scale.get_units();
-      if (reading >= 0) {
-        totalWeight += reading;
-        validSamples++;
+  smartBottleService.addCharacteristic(weightCharacteristic);
+  smartBottleService.addCharacteristic(commandCharacteristic);
+  BLE.addService(smartBottleService);
+
+  uint8_t zero[4] = {0, 0, 0, 0};
+  weightCharacteristic.writeValue(zero, sizeof(zero));
+
+  BLE.advertise();
+  bleReady = true;
+  Serial.println(F("[BLE] Advertising as 'SmartBottle'"));
+}
+
+void broadcastWeight(float grams) {
+  uint8_t data[4];
+  memcpy(data, &grams, sizeof(data));
+  weightCharacteristic.writeValue(data, sizeof(data));
+}
+
+void handleBleCommand() {
+  if (!bleReady) return;
+  if (!commandCharacteristic.written()) return;
+
+  const int len = commandCharacteristic.valueLength();
+  if (len <= 0) return;
+
+  const uint8_t* value = commandCharacteristic.value();
+  const char cmd = tolower((char)value[0]);
+  switch (cmd) {
+    case 't':
+      scale.tare();
+      saveCalibration();
+      Serial.println(F("[BLE] Tared and saved."));
+      break;
+    case 'e':
+      clearCalibration();
+      Serial.println(F("[BLE] Calibration erased. Reboot to recalibrate."));
+      break;
+    default:
+      break;
+  }
+}
+
+void handleSerialCommands() {
+  while (Serial.available()) {
+    const char ch = (char)Serial.read();
+    if (ch == '\n' || ch == '\r') {
+      inputBuffer.trim();
+      if (inputBuffer.length() > 0) {
+        const char cmd = tolower(inputBuffer[0]);
+        if (cmd == 't') {
+          handleTareCommand();
+        } else if (cmd == 'c') {
+          handleRecalibrationCommand();
+        } else if (cmd == 'e') {
+          clearCalibration();
+          Serial.println(F("Calibration erased. Reboot to recalibrate."));
+        }
+      }
+      inputBuffer = "";
+    } else {
+      inputBuffer += ch;
+    }
+  }
+}
+
+void handleTareCommand() {
+  scale.tare();
+  saveCalibration();
+  Serial.println(F("[TARE] Zeroed and saved."));
+}
+
+void handleRecalibrationCommand() {
+  Serial.println(F("Remove everything. Taring in 3s..."));
+  const unsigned long waitStart = millis();
+  while (millis() - waitStart < 3000) {
+    if (bleReady) BLE.poll();
+  }
+  scale.set_scale();
+  scale.tare();
+  Serial.println(F("Place drink, type grams + Enter."));
+  inputBuffer = "";
+  while (true) {
+    if (bleReady) BLE.poll();
+    while (Serial.available()) {
+      const char c = (char)Serial.read();
+      if (c == '\n' || c == '\r') {
+        inputBuffer.trim();
+        const float knownG = inputBuffer.toFloat();
+        if (knownG > 0) {
+          performCalibration(knownG);
+          Serial.println(F("Re-calibrated and saved!"));
+          inputBuffer = "";
+          return;
+        }
+        inputBuffer = "";
+      } else {
+        inputBuffer += c;
       }
     }
-    delay(10);
   }
+}
 
-  if (validSamples > 0) {
-    currentWeight = totalWeight / validSamples;
+void runFirstTimeCalibration() {
+  Serial.println(F("Make sure scale is EMPTY..."));
+  delay(3000);
+  scale.set_scale();
+  scale.tare();
+  Serial.println(F("Scale zeroed!"));
+  Serial.println(F(""));
+  Serial.println(F("Now place your drink on the scale."));
+  Serial.println(F("Then type its weight in grams + Enter."));
+  Serial.println(F("Example: 553"));
+  Serial.println(F("================================="));
 
-    static float filteredWeight = 0;
-    filteredWeight = 0.8 * filteredWeight + 0.2 * currentWeight;
-    currentWeight = filteredWeight;
-
-    if (currentWeight < 0) currentWeight = 0;
-
-    Serial.print("Weight: ");
-    Serial.print(currentWeight);
-    Serial.println(" g");
-
-    if (deviceConnected) {
-      sendWeight(currentWeight);
+  inputBuffer = "";
+  while (true) {
+    while (Serial.available()) {
+      const char ch = (char)Serial.read();
+      if (ch == '\n' || ch == '\r') {
+        inputBuffer.trim();
+        const float knownG = inputBuffer.toFloat();
+        if (knownG > 0) {
+          Serial.print(F("Calibrating with "));
+          Serial.print(knownG, 1);
+          Serial.println(F("g..."));
+          performCalibration(knownG);
+          Serial.println(F("Calibration done and saved to EEPROM!"));
+          Serial.println(F("Place = shows weight. Remove = shows 0."));
+          Serial.println(F("t = re-zero  |  c = re-calibrate  |  e = erase"));
+          inputBuffer = "";
+          return;
+        } else {
+          Serial.println(F("Type a number like 553 then Enter."));
+        }
+        inputBuffer = "";
+      } else {
+        inputBuffer += ch;
+      }
     }
   }
 }
 
-void sendWeight(float weightG) {
-  uint8_t data[4];
-  memcpy(data, &weightG, 4);
-
-  pWeightCharacteristic->setValue(data, 4);
-  pWeightCharacteristic->notify();
+void performCalibration(float knownG) {
+  const float raw = scale.get_units(10);
+  float factor = raw / knownG;
+  if (factor > 0) factor = -factor;
+  scale.set_scale(factor);
+  saveCalibration();
 }
 
-void updateBatteryLevel() {
-  int adcValue = analogRead(BATTERY_PIN);
-
-  float voltage = (adcValue / 4095.0) * 3.3 * BATTERY_DIVIDER_RATIO;
-
-  float percentage = ((voltage - BATTERY_MIN_VOLTAGE) /
-                      (BATTERY_MAX_VOLTAGE - BATTERY_MIN_VOLTAGE)) * 100.0;
-
-  if (percentage > 100) percentage = 100;
-  if (percentage < 0) percentage = 0;
-
-  batteryLevel = (uint8_t)percentage;
-
-  Serial.print("Battery: ");
-  Serial.print(batteryLevel);
-  Serial.print("% (");
-  Serial.print(voltage);
-  Serial.println("V)");
-
-  pBatteryCharacteristic->setValue(&batteryLevel, 1);
+bool loadCalibration() {
+  CalibrationRecord rec;
+  EEPROM.get(EEPROM_BASE_ADDR, rec);
+  if (rec.magic == EEPROM_MAGIC) {
+    scale.set_scale(rec.scaleFactor);
+    scale.set_offset(rec.tareOffset);
+    return true;
+  }
+  scale.set_scale();
+  return false;
 }
 
+void saveCalibration() {
+  CalibrationRecord rec;
+  rec.magic       = EEPROM_MAGIC;
+  rec.scaleFactor = scale.get_scale();
+  rec.tareOffset  = scale.get_offset();
+  EEPROM.put(EEPROM_BASE_ADDR, rec);
+}
+
+void clearCalibration() {
+  CalibrationRecord rec;
+  rec.magic       = 0;
+  rec.scaleFactor = 0.0f;
+  rec.tareOffset  = 0;
+  EEPROM.put(EEPROM_BASE_ADDR, rec);
+}

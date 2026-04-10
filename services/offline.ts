@@ -3,15 +3,19 @@ import NetInfo, { NetInfoState } from "@react-native-community/netinfo";
 import { ConvexReactClient } from "convex/react";
 import { api } from "../convex/_generated/api";
 import { FunctionReference } from "convex/server";
+import { CACHE_DURATION_MS, OFFLINE_QUEUE_MAX_AGE_MS } from "../constants";
 
 const OFFLINE_QUEUE_KEY = "smartbottle_offline_queue";
 const OFFLINE_CACHE_KEY = "smartbottle_offline_cache";
+
+const SYNC_TIMEOUT_MS = 60 * 1000;
 
 const ACTION_MAP = {
   log_drink: api.drinks.log,
   update_profile: api.auth.updateProfile,
   create_bottle: api.bottles.create,
   update_bottle: api.bottles.update,
+  remove_bottle: api.bottles.remove,
 } as const;
 
 type ActionType = keyof typeof ACTION_MAP;
@@ -40,6 +44,7 @@ class OfflineService {
   private unsubscribe: (() => void) | null = null;
   private convexClient: ConvexReactClient | null = null;
   private isSyncing: boolean = false;
+  private syncTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private onSyncCallbacks: SyncCallback[] = [];
   private onStatusChangeCallbacks: ((isOnline: boolean) => void)[] = [];
 
@@ -52,7 +57,11 @@ class OfflineService {
 
     this.unsubscribe = NetInfo.addEventListener((state: NetInfoState) => {
       const wasOffline = !this._isOnline;
-      this._isOnline = state.isConnected ?? false;
+      const reachable =
+        state.isInternetReachable === null
+          ? (state.isConnected ?? false)
+          : state.isInternetReachable === true;
+      this._isOnline = (state.isConnected ?? false) && reachable;
 
       this.onStatusChangeCallbacks.forEach((cb) => cb(this._isOnline));
 
@@ -89,7 +98,11 @@ class OfflineService {
 
   async checkOnline(): Promise<boolean> {
     const state = await NetInfo.fetch();
-    this._isOnline = state.isConnected ?? false;
+    const reachable =
+      state.isInternetReachable === null
+        ? (state.isConnected ?? false)
+        : state.isInternetReachable === true;
+    this._isOnline = (state.isConnected ?? false) && reachable;
     return this._isOnline;
   }
 
@@ -163,57 +176,70 @@ class OfflineService {
     }
 
     this.isSyncing = true;
-    const queue = await this.getQueue();
-
-    if (queue.length === 0) {
+    if (this.syncTimeoutId) clearTimeout(this.syncTimeoutId);
+    this.syncTimeoutId = setTimeout(() => {
+      console.warn("Offline sync timed out — releasing lock.");
       this.isSyncing = false;
-      const result = { synced: 0, failed: 0, pending: 0 };
+      this.syncTimeoutId = null;
+    }, SYNC_TIMEOUT_MS);
+
+    try {
+      const queue = await this.getQueue();
+
+      if (queue.length === 0) {
+        const result = { synced: 0, failed: 0, pending: 0 };
+        this.notifySyncCallbacks(result);
+        return result;
+      }
+
+      let synced = 0;
+      let failed = 0;
+      const remainingQueue: QueuedAction[] = [];
+
+      const sorted = [...queue].sort((a, b) => a.timestamp - b.timestamp);
+
+      for (const action of sorted) {
+        if (Date.now() - action.timestamp > OFFLINE_QUEUE_MAX_AGE_MS) {
+          failed++;
+          continue;
+        }
+
+        try {
+          const mutation = ACTION_MAP[action.type] as FunctionReference<"mutation">;
+          await this.convexClient.mutation(mutation, action.payload);
+          synced++;
+        } catch (error: any) {
+          console.error(`Sync failed for ${action.type} (${action.id}):`, error);
+          failed++;
+
+          if (this.isNetworkError(error)) {
+            this._isOnline = false;
+            this.onStatusChangeCallbacks.forEach((cb) => cb(false));
+            remainingQueue.push(action);
+            const currentIndex = sorted.indexOf(action);
+            remainingQueue.push(...sorted.slice(currentIndex + 1));
+            break;
+          }
+
+          action.retries++;
+          if (action.retries < 3) {
+            remainingQueue.push(action);
+          }
+        }
+      }
+
+      await AsyncStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(remainingQueue));
+
+      const result = { synced, failed, pending: remainingQueue.length };
       this.notifySyncCallbacks(result);
       return result;
-    }
-
-    let synced = 0;
-    let failed = 0;
-    const remainingQueue: QueuedAction[] = [];
-
-    const sorted = [...queue].sort((a, b) => a.timestamp - b.timestamp);
-
-    for (const action of sorted) {
-      if (Date.now() - action.timestamp > 24 * 60 * 60 * 1000) {
-        failed++;
-        continue;
+    } finally {
+      if (this.syncTimeoutId) {
+        clearTimeout(this.syncTimeoutId);
+        this.syncTimeoutId = null;
       }
-
-      try {
-        const mutation = ACTION_MAP[action.type] as FunctionReference<"mutation">;
-        await this.convexClient.mutation(mutation, action.payload);
-        synced++;
-      } catch (error: any) {
-        console.error(`Sync failed for ${action.type} (${action.id}):`, error);
-        failed++;
-
-        if (this.isNetworkError(error)) {
-          this._isOnline = false;
-          this.onStatusChangeCallbacks.forEach((cb) => cb(false));
-          remainingQueue.push(action);
-          const currentIndex = sorted.indexOf(action);
-          remainingQueue.push(...sorted.slice(currentIndex + 1));
-          break;
-        }
-
-        action.retries++;
-        if (action.retries < 3) {
-          remainingQueue.push(action);
-        }
-      }
+      this.isSyncing = false;
     }
-
-    await AsyncStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(remainingQueue));
-    this.isSyncing = false;
-
-    const result = { synced, failed, pending: remainingQueue.length };
-    this.notifySyncCallbacks(result);
-    return result;
   }
 
   async cacheData(data: Partial<OfflineCache>): Promise<void> {
@@ -240,6 +266,13 @@ class OfflineService {
     }
   }
 
+  async getFreshCachedData(): Promise<OfflineCache | null> {
+    const cached = await this.getCachedData();
+    if (!cached) return null;
+    if (Date.now() - cached.lastUpdated > CACHE_DURATION_MS) return null;
+    return cached;
+  }
+
   async clearAll(): Promise<void> {
     await Promise.all([
       AsyncStorage.removeItem(OFFLINE_QUEUE_KEY),
@@ -249,14 +282,16 @@ class OfflineService {
 
   private isNetworkError(error: any): boolean {
     const message = (error?.message || "").toLowerCase();
-    return (
-      message.includes("network") ||
-      message.includes("fetch") ||
-      message.includes("timeout") ||
-      message.includes("connection") ||
-      message.includes("offline") ||
-      message.includes("abort")
-    );
+    if (message.includes("network request failed")) return true;
+    if (message.includes("failed to fetch")) return true;
+    if (message.includes("networkerror")) return true;
+    if (message.includes("offline")) return true;
+    if (message.includes("timed out") || message.includes("timeout")) return true;
+    if (message.includes("connection refused")) return true;
+    if (message.includes("connection reset")) return true;
+    if (message.includes("econnrefused") || message.includes("enotfound")) return true;
+    if (message.includes("abortrequest") || message.includes("request aborted")) return true;
+    return false;
   }
 }
 

@@ -30,6 +30,8 @@ import { useHydrationStore } from "../../stores/hydrationStore";
 import { useBottleStore } from "../../stores/bottleStore";
 import { useAuthStore } from "../../stores/authStore";
 import { useDemoStore } from "../../stores/demoStore";
+import { notificationService } from "../../services/notifications";
+import { bluetoothService } from "../../services/bluetooth";
 import { BottleIcon } from "../../components/BottleIcons";
 import { colors, spacing, typography } from "../../constants/theme";
 
@@ -99,6 +101,7 @@ export default function Settings() {
   );
 
   const deleteAccount = useMutation(api.auth.deleteAccount);
+  const logoutMutation = useMutation(api.auth.logout);
   const removeBottle = useMutation(api.bottles.remove);
 
   const [showBottlesModal, setShowBottlesModal] = useState(false);
@@ -136,15 +139,31 @@ export default function Settings() {
         text: "Logga ut",
         style: "destructive",
         onPress: async () => {
+          try {
+            if (authStore.token) {
+              await logoutMutation({ token: authStore.token });
+            }
+          } catch (e) {
+            console.warn("Backend logout failed:", e);
+          }
+          try {
+            await notificationService.cancelAllReminders();
+          } catch (e) {
+            console.warn("Failed to cancel reminders on logout:", e);
+          }
           await store.resetAll();
           demoStore.stopSimulation();
-          bottleStore.disconnect();
+          try {
+            await bluetoothService.disconnect();
+          } catch (e) {
+            console.warn("BLE disconnect on logout failed:", e);
+          }
           await authStore.clearToken();
           router.replace("/(auth)/login");
         },
       },
     ]);
-  }, [authStore, store, demoStore, bottleStore]);
+  }, [authStore, store, demoStore, logoutMutation]);
 
   const handleResetIntake = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -187,7 +206,11 @@ export default function Settings() {
                       }
                       await store.resetAll();
                       demoStore.stopSimulation();
-                      bottleStore.disconnect();
+                      try {
+                        await bluetoothService.disconnect();
+                      } catch (e) {
+                        console.warn("BLE disconnect on account delete failed:", e);
+                      }
                       await authStore.clearToken();
                       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
                       router.replace("/(auth)/login");

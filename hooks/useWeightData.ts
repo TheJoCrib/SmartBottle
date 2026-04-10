@@ -7,7 +7,6 @@ export interface WeightData {
   isConnected: boolean;
   lastKnownWeight: number | null;
   bottleState: "on_scale" | "off_scale" | "disconnected";
-  batteryLevel: number | null;
   waterRemainingMl: number;
   bottleCapacityMl: number;
   fillPercentage: number;
@@ -33,7 +32,6 @@ export function useWeightData(): WeightData {
       isConnected: true,
       lastKnownWeight: demoStore.simulatedWeight,
       bottleState: demoStore.simulatedWeight > WEIGHT_THRESHOLD_G ? "on_scale" : "off_scale",
-      batteryLevel: 100,
       waterRemainingMl: remaining,
       bottleCapacityMl: capacity,
       fillPercentage: fill,
@@ -50,7 +48,6 @@ export function useWeightData(): WeightData {
       isConnected: false,
       lastKnownWeight: null,
       bottleState: "disconnected",
-      batteryLevel: null,
       waterRemainingMl: 0,
       bottleCapacityMl: store.getBottleCapacityMl(),
       fillPercentage: 0,
@@ -66,7 +63,6 @@ export function useWeightData(): WeightData {
     isConnected: true,
     lastKnownWeight: weight,
     bottleState: weight !== null && weight > WEIGHT_THRESHOLD_G ? "on_scale" : "off_scale",
-    batteryLevel: bleStore.batteryLevel,
     waterRemainingMl: remaining,
     bottleCapacityMl: capacity,
     fillPercentage: capacity > 0 ? Math.min(1, Math.max(0, remaining / capacity)) : 0,

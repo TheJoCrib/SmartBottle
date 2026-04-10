@@ -17,9 +17,12 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
+  withRepeat,
+  withSequence,
   FadeInDown,
   FadeIn,
   Easing,
+  cancelAnimation,
 } from "react-native-reanimated";
 import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useQuery } from "convex/react";
@@ -28,10 +31,13 @@ import BottomSheet, { BottomSheetView } from "@gorhom/bottom-sheet";
 
 import { useHydrationStore } from "../../stores/hydrationStore";
 import { useAuthStore } from "../../stores/authStore";
+import { useBottleStore } from "../../stores/bottleStore";
 import { useDemoStore } from "../../stores/demoStore";
 import { useWeightData } from "../../hooks/useWeightData";
 import { BottleSkia } from "../../components/BottleSkia";
 import { BottleIcon } from "../../components/BottleIcons";
+import { AnimatedNumber } from "../../components/AnimatedNumber";
+import { bluetoothService } from "../../services/bluetooth";
 import { colors, spacing, typography } from "../../constants/theme";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -49,7 +55,9 @@ export default function Home() {
   const store = useHydrationStore();
   const demoStore = useDemoStore();
   const weightData = useWeightData();
+  const isMeasuringDrink = useBottleStore((s) => s.isMeasuringDrink);
   const [refreshing, setRefreshing] = React.useState(false);
+  const [isReconnecting, setIsReconnecting] = React.useState(false);
   const bottomSheetRef = useRef<BottomSheet>(null);
   const snapPoints = useMemo(() => ["45%"], []);
 
@@ -68,24 +76,53 @@ export default function Home() {
     async (bottle: any) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       if (!bottle.fullWeightG || bottle.fullWeightG <= 0) {
-        router.push("/bottle/calibrate" as any);
+        router.push({
+          pathname: "/bottle/calibrate",
+          params: { bottleId: String(bottle._id) },
+        });
         return;
       }
+
       await store.setActiveBottle({
         id: bottle._id,
         fullWeightG: bottle.fullWeightG,
         emptyWeightG: bottle.emptyWeightG,
         capacityMl: bottle.fullWeightG - bottle.emptyWeightG,
-        modelId: bottle.modelId,
       });
+
+      if (!bottle.bleDeviceId) {
+        router.push({
+          pathname: "/bottle/calibrate",
+          params: { bottleId: String(bottle._id), pairOnly: "1" },
+        });
+        return;
+      }
+
+      setIsReconnecting(true);
+      try {
+        await bluetoothService.connectAndStream(bottle.bleDeviceId);
+      } catch (e: any) {
+        Alert.alert(
+          "Kunde inte ansluta",
+          e?.message ||
+            "Kontrollera att Bluetooth är på och att flaskan är i närheten.",
+        );
+      } finally {
+        setIsReconnecting(false);
+      }
     },
-    [store]
+    [store],
   );
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setTimeout(() => setRefreshing(false), 1000);
+  }, []);
+
+  const handleConnectPress = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    bottomSheetRef.current?.expand();
   }, []);
 
   const progressWidth = useSharedValue(0);
@@ -98,6 +135,28 @@ export default function Home() {
 
   const progressStyle = useAnimatedStyle(() => ({
     width: `${progressWidth.value * 100}%`,
+  }));
+
+  const measurePulse = useSharedValue(0);
+  useEffect(() => {
+    if (isMeasuringDrink) {
+      measurePulse.value = withRepeat(
+        withSequence(
+          withTiming(1, { duration: 700, easing: Easing.inOut(Easing.ease) }),
+          withTiming(0.3, { duration: 700, easing: Easing.inOut(Easing.ease) }),
+        ),
+        -1,
+        true,
+      );
+    } else {
+      cancelAnimation(measurePulse);
+      measurePulse.value = withTiming(0, { duration: 200 });
+    }
+  }, [isMeasuringDrink]);
+
+  const measureBadgeStyle = useAnimatedStyle(() => ({
+    opacity: measurePulse.value,
+    transform: [{ scale: 0.9 + measurePulse.value * 0.1 }],
   }));
 
   if (!store.isLoaded) {
@@ -138,7 +197,12 @@ export default function Home() {
             {currentStreak > 0 && (
               <View style={styles.streakBadge}>
                 <MaterialCommunityIcons name="fire" size={14} color={colors.warning} />
-                <Text style={styles.streakText}>{currentStreak} dagar</Text>
+                <AnimatedNumber
+                  style={styles.streakText}
+                  value={currentStreak}
+                  suffix=" dagar"
+                  duration={700}
+                />
               </View>
             )}
           </View>
@@ -147,9 +211,19 @@ export default function Home() {
         
         <Animated.View entering={FadeInDown.duration(400).delay(100)} style={styles.progressSection}>
           <View style={styles.progressHeader}>
-            <Text style={styles.progressLabel}>Dagens mål</Text>
+            <View style={styles.progressLabelRow}>
+              <Text style={styles.progressLabel}>Dagens mål</Text>
+              {isMeasuringDrink && (
+                <Animated.View style={[styles.measureBadge, measureBadgeStyle]}>
+                  <View style={styles.measureDot} />
+                  <Text style={styles.measureText}>Mäter...</Text>
+                </Animated.View>
+              )}
+            </View>
             <Text style={styles.progressValue}>
-              {todayIntake} <Text style={styles.progressDiv}>/</Text> {store.dailyGoalMl} ml
+              <AnimatedNumber style={styles.progressValue} value={todayIntake} />
+              <Text style={styles.progressDiv}> / </Text>
+              <AnimatedNumber style={styles.progressValue} value={store.dailyGoalMl} /> ml
             </Text>
           </View>
           <View style={styles.progressTrack}>
@@ -182,7 +256,13 @@ export default function Home() {
           <BottleSkia
             fillPercentage={(store.isCalibrated || store.demoMode) ? fillPercentage : 0}
             currentMl={(store.isCalibrated || store.demoMode) ? waterRemaining : 0}
-            bottleState={isDisconnected && !store.demoMode ? "disconnected" : weightData.bottleState}
+            bottleState={
+              store.demoMode
+                ? weightData.bottleState
+                : isDisconnected || !store.isCalibrated || !store.activeBottleId
+                  ? "disconnected"
+                  : weightData.bottleState
+            }
             modelKey={store.activeBottleModelId}
             width={Math.min(200, SCREEN_WIDTH * 0.5)}
             height={Math.min(SCREEN_HEIGHT * 0.35, 280)}
@@ -194,14 +274,14 @@ export default function Home() {
           <Animated.View entering={FadeInDown.duration(400).delay(300)} style={styles.connectPrompt}>
             <TouchableOpacity
               style={styles.connectBtn}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                router.push("/bottle/add");
-              }}
+              onPress={handleConnectPress}
+              disabled={isReconnecting}
               activeOpacity={0.85}
             >
               <Feather name="bluetooth" size={18} color="#FFF" style={{ marginRight: 8 }} />
-              <Text style={styles.connectBtnText}>Para din flaska</Text>
+              <Text style={styles.connectBtnText}>
+                {isReconnecting ? "Ansluter..." : "Anslut flaska"}
+              </Text>
             </TouchableOpacity>
           </Animated.View>
         )}
@@ -227,17 +307,32 @@ export default function Home() {
         {(store.isCalibrated || store.demoMode) && (!isDisconnected || store.demoMode) && (
           <Animated.View entering={FadeInDown.duration(400).delay(350)} style={styles.summaryCard}>
             <View style={styles.summaryItem}>
-              <Text style={styles.summaryValue}>{Math.round(dailyProgress * 100)}%</Text>
+              <AnimatedNumber
+                style={styles.summaryValue}
+                value={Math.round(dailyProgress * 100)}
+                suffix="%"
+                duration={900}
+              />
               <Text style={styles.summaryLabel}>av mål</Text>
             </View>
             <View style={styles.summaryDivider} />
             <View style={styles.summaryItem}>
-              <Text style={styles.summaryValue}>{(todayIntake / 1000).toFixed(1)}L</Text>
+              <AnimatedNumber
+                style={styles.summaryValue}
+                value={todayIntake / 1000}
+                decimals={1}
+                suffix="L"
+                duration={900}
+              />
               <Text style={styles.summaryLabel}>totalt idag</Text>
             </View>
             <View style={styles.summaryDivider} />
             <View style={styles.summaryItem}>
-              <Text style={styles.summaryValue}>{waterRemaining}</Text>
+              <AnimatedNumber
+                style={styles.summaryValue}
+                value={waterRemaining}
+                duration={700}
+              />
               <Text style={styles.summaryLabel}>i flaskan</Text>
             </View>
           </Animated.View>
@@ -247,12 +342,23 @@ export default function Home() {
         {isDisconnected && !store.demoMode && todayIntake > 0 && (
           <Animated.View entering={FadeInDown.duration(400).delay(350)} style={styles.summaryCard}>
             <View style={styles.summaryItem}>
-              <Text style={styles.summaryValue}>{Math.round(dailyProgress * 100)}%</Text>
+              <AnimatedNumber
+                style={styles.summaryValue}
+                value={Math.round(dailyProgress * 100)}
+                suffix="%"
+                duration={900}
+              />
               <Text style={styles.summaryLabel}>av mål</Text>
             </View>
             <View style={styles.summaryDivider} />
             <View style={styles.summaryItem}>
-              <Text style={styles.summaryValue}>{(todayIntake / 1000).toFixed(1)}L</Text>
+              <AnimatedNumber
+                style={styles.summaryValue}
+                value={todayIntake / 1000}
+                decimals={1}
+                suffix="L"
+                duration={900}
+              />
               <Text style={styles.summaryLabel}>totalt idag</Text>
             </View>
           </Animated.View>
@@ -306,7 +412,9 @@ export default function Home() {
                   <View style={{ flex: 1 }}>
                     <Text style={styles.sheetItemName}>{bottle.name}</Text>
                     <Text style={styles.sheetItemMeta}>
-                      {isCalibrated ? `${cap} ml` : "Ej kalibrerad"}
+                      {isCalibrated
+                        ? `${cap} ml${bottle.bleDeviceId ? " • Parad" : " • Ej parad"}`
+                        : "Ej kalibrerad"}
                     </Text>
                   </View>
                   {isActive && <Feather name="check" size={20} color={colors.accent} />}
@@ -339,7 +447,24 @@ const styles = StyleSheet.create({
   streakText: { fontSize: 12, fontWeight: "600", color: colors.warning },
   progressSection: { paddingHorizontal: spacing.page, paddingTop: 16, paddingBottom: 12 },
   progressHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
+  progressLabelRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   progressLabel: { fontSize: 15, fontWeight: "700", color: colors.textPrimary },
+  measureBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: colors.primaryMuted,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  measureDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.accent,
+  },
+  measureText: { fontSize: 11, fontWeight: "600", color: colors.accent },
   progressValue: { fontSize: 14, fontWeight: "500", color: colors.textSecondary },
   progressDiv: { color: colors.textMuted },
   progressTrack: { height: 8, borderRadius: 4, backgroundColor: colors.surface, overflow: "hidden" },
