@@ -1,216 +1,167 @@
 
-#include <BLEDevice.h>
-#include <BLEServer.h>
-#include <BLEUtils.h>
-#include <BLE2902.h>
+#include <ArduinoBLE.h>
 #include "HX711.h"
 
-#define HX711_DT_PIN 16
-#define HX711_SCK_PIN 17
-
-#define BATTERY_PIN 34
-
-#define LED_PIN 2
+#define HX711_DT_PIN  2
+#define HX711_SCK_PIN 3
+#define LED_PIN       LED_BUILTIN
 
 #define CALIBRATION_FACTOR 420.0
 
 #define WEIGHT_UPDATE_INTERVAL 1000
-#define WEIGHT_SAMPLES 5
+#define WEIGHT_SAMPLES         5
+#define FILTER_ALPHA           0.2
 
-#define BATTERY_MAX_VOLTAGE 4.2
-#define BATTERY_MIN_VOLTAGE 3.3
-#define BATTERY_DIVIDER_RATIO 2.0
-
-#define SERVICE_UUID        "12345678-1234-5678-1234-56789abcdef0"
-#define WEIGHT_CHAR_UUID    "12345678-1234-5678-1234-56789abcdef1"
-#define BATTERY_CHAR_UUID   "12345678-1234-5678-1234-56789abcdef2"
+#define SERVICE_UUID     "12345678-1234-5678-1234-56789abcdef0"
+#define WEIGHT_CHAR_UUID "12345678-1234-5678-1234-56789abcdef1"
+#define BATTERY_CHAR_UUID "12345678-1234-5678-1234-56789abcdef2"
 
 HX711 scale;
 
-BLEServer* pServer = NULL;
-BLECharacteristic* pWeightCharacteristic = NULL;
-BLECharacteristic* pBatteryCharacteristic = NULL;
+BLEService bottleService(SERVICE_UUID);
 
-bool deviceConnected = false;
-bool oldDeviceConnected = false;
+BLECharacteristic weightCharacteristic(
+  WEIGHT_CHAR_UUID,
+  BLERead | BLENotify,
+  4
+);
+
+BLECharacteristic batteryCharacteristic(
+  BATTERY_CHAR_UUID,
+  BLERead,
+  1
+);
+
+float filteredWeight = 0;
 unsigned long lastWeightUpdate = 0;
-unsigned long lastBatteryUpdate = 0;
-
-float currentWeight = 0;
-uint8_t batteryLevel = 100;
-
-class ServerCallbacks : public BLEServerCallbacks {
-  void onConnect(BLEServer* pServer) {
-    deviceConnected = true;
-    digitalWrite(LED_PIN, HIGH);
-    Serial.println("Device connected");
-  }
-
-  void onDisconnect(BLEServer* pServer) {
-    deviceConnected = false;
-    digitalWrite(LED_PIN, LOW);
-    Serial.println("Device disconnected");
-  }
-};
+bool wasConnected = false;
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("\n=== SmartBottle Starting ===");
+  delay(1000);
+  Serial.println("\n=== SmartBottle R4 WiFi ===");
 
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
 
-  analogReadResolution(12);
-  analogSetAttenuation(ADC_11db);
-
   Serial.println("Initializing HX711...");
   scale.begin(HX711_DT_PIN, HX711_SCK_PIN);
 
+  unsigned long waitStart = millis();
   while (!scale.is_ready()) {
-    Serial.println("Waiting for HX711...");
+    if (millis() - waitStart > 5000) {
+      Serial.println("ERROR: HX711 not responding! Check wiring:");
+      Serial.println("  DT  -> Pin 2");
+      Serial.println("  SCK -> Pin 3");
+      Serial.println("  VCC -> 5V");
+      Serial.println("  GND -> GND");
+      while (true) {
+        digitalWrite(LED_PIN, HIGH); delay(100);
+        digitalWrite(LED_PIN, LOW);  delay(100);
+      }
+    }
     delay(100);
   }
 
   scale.set_scale(CALIBRATION_FACTOR);
 
-  Serial.println("Taring scale... Remove all weight!");
+  Serial.println("Taring... keep load cell empty!");
   delay(2000);
   scale.tare();
-  Serial.println("Scale tared!");
+  Serial.println("Tare done.");
 
-  setupBLE();
+  Serial.println("Initializing BLE...");
+  if (!BLE.begin()) {
+    Serial.println("ERROR: BLE failed to start!");
+    while (true) {
+      digitalWrite(LED_PIN, HIGH); delay(300);
+      digitalWrite(LED_PIN, LOW);  delay(300);
+    }
+  }
+
+  BLE.setLocalName("SmartBottle");
+  BLE.setDeviceName("SmartBottle");
+
+  BLE.setAdvertisedService(bottleService);
+  bottleService.addCharacteristic(weightCharacteristic);
+  bottleService.addCharacteristic(batteryCharacteristic);
+  BLE.addService(bottleService);
+
+  float zero = 0.0f;
+  weightCharacteristic.writeValue((uint8_t*)&zero, 4);
+  uint8_t bat = 100;
+  batteryCharacteristic.writeValue(&bat, 1);
+
+  BLE.advertise();
 
   Serial.println("=== SmartBottle Ready ===");
-  Serial.println("Waiting for connection...");
-}
-
-void setupBLE() {
-  Serial.println("Initializing BLE...");
-
-  BLEDevice::init("SmartBottle");
-
-  pServer = BLEDevice::createServer();
-  pServer->setCallbacks(new ServerCallbacks());
-
-  BLEService* pService = pServer->createService(SERVICE_UUID);
-
-  pWeightCharacteristic = pService->createCharacteristic(
-    WEIGHT_CHAR_UUID,
-    BLECharacteristic::PROPERTY_READ |
-    BLECharacteristic::PROPERTY_NOTIFY
-  );
-  pWeightCharacteristic->addDescriptor(new BLE2902());
-
-  pBatteryCharacteristic = pService->createCharacteristic(
-    BATTERY_CHAR_UUID,
-    BLECharacteristic::PROPERTY_READ
-  );
-
-  pService->start();
-
-  BLEAdvertising* pAdvertising = BLEDevice::getAdvertising();
-  pAdvertising->addServiceUUID(SERVICE_UUID);
-  pAdvertising->setScanResponse(true);
-  pAdvertising->setMinPreferred(0x06);
-  pAdvertising->setMinPreferred(0x12);
-  BLEDevice::startAdvertising();
-
-  Serial.println("BLE initialized and advertising");
+  Serial.println("Advertising as 'SmartBottle'...");
+  Serial.println("Waiting for app to connect...");
 }
 
 void loop() {
-  unsigned long currentMillis = millis();
+  BLE.poll();
 
-  if (currentMillis - lastWeightUpdate >= WEIGHT_UPDATE_INTERVAL) {
-    lastWeightUpdate = currentMillis;
-    readAndSendWeight();
+  BLEDevice central = BLE.central();
+  bool isConnected = central && central.connected();
+
+  if (isConnected && !wasConnected) {
+    Serial.print("Connected: ");
+    Serial.println(central.address());
+    digitalWrite(LED_PIN, HIGH);
+    wasConnected = true;
   }
 
-  if (currentMillis - lastBatteryUpdate >= 30000) {
-    lastBatteryUpdate = currentMillis;
-    updateBatteryLevel();
+  if (!isConnected && wasConnected) {
+    Serial.println("Disconnected. Re-advertising...");
+    digitalWrite(LED_PIN, LOW);
+    wasConnected = false;
+    BLE.advertise();
   }
 
-  if (!deviceConnected && oldDeviceConnected) {
-    delay(500);
-    pServer->startAdvertising();
-    Serial.println("Restarting advertising...");
-    oldDeviceConnected = deviceConnected;
+  unsigned long now = millis();
+  if (now - lastWeightUpdate >= WEIGHT_UPDATE_INTERVAL) {
+    lastWeightUpdate = now;
+    readAndSendWeight(isConnected);
   }
-
-  if (deviceConnected && !oldDeviceConnected) {
-    oldDeviceConnected = deviceConnected;
-  }
-
-  delay(10);
 }
 
-void readAndSendWeight() {
+void readAndSendWeight(bool connected) {
   if (!scale.is_ready()) {
     Serial.println("HX711 not ready");
     return;
   }
 
-  float totalWeight = 0;
-  int validSamples = 0;
+  float total = 0;
+  int valid = 0;
 
   for (int i = 0; i < WEIGHT_SAMPLES; i++) {
     if (scale.is_ready()) {
       float reading = scale.get_units();
-      if (reading >= 0) {
-        totalWeight += reading;
-        validSamples++;
+      if (reading >= -5) {
+        total += reading;
+        valid++;
       }
     }
     delay(10);
   }
 
-  if (validSamples > 0) {
-    currentWeight = totalWeight / validSamples;
+  if (valid == 0) return;
 
-    static float filteredWeight = 0;
-    filteredWeight = 0.8 * filteredWeight + 0.2 * currentWeight;
-    currentWeight = filteredWeight;
+  float raw = total / valid;
 
-    if (currentWeight < 0) currentWeight = 0;
+  filteredWeight = (1.0 - FILTER_ALPHA) * filteredWeight + FILTER_ALPHA * raw;
 
-    Serial.print("Weight: ");
-    Serial.print(currentWeight);
-    Serial.println(" g");
+  float weight = filteredWeight < 0 ? 0 : filteredWeight;
 
-    if (deviceConnected) {
-      sendWeight(currentWeight);
-    }
+  Serial.print("Vikt: ");
+  Serial.print(weight, 1);
+  Serial.println(" g");
+
+  if (connected) {
+    uint8_t data[4];
+    memcpy(data, &weight, 4);
+    weightCharacteristic.writeValue(data, 4);
   }
-}
-
-void sendWeight(float weightG) {
-  uint8_t data[4];
-  memcpy(data, &weightG, 4);
-
-  pWeightCharacteristic->setValue(data, 4);
-  pWeightCharacteristic->notify();
-}
-
-void updateBatteryLevel() {
-  int adcValue = analogRead(BATTERY_PIN);
-
-  float voltage = (adcValue / 4095.0) * 3.3 * BATTERY_DIVIDER_RATIO;
-
-  float percentage = ((voltage - BATTERY_MIN_VOLTAGE) /
-                      (BATTERY_MAX_VOLTAGE - BATTERY_MIN_VOLTAGE)) * 100.0;
-
-  if (percentage > 100) percentage = 100;
-  if (percentage < 0) percentage = 0;
-
-  batteryLevel = (uint8_t)percentage;
-
-  Serial.print("Battery: ");
-  Serial.print(batteryLevel);
-  Serial.print("% (");
-  Serial.print(voltage);
-  Serial.println("V)");
-
-  pBatteryCharacteristic->setValue(&batteryLevel, 1);
 }
 
