@@ -25,6 +25,7 @@ import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useQuery, useMutation } from "convex/react";
 import Slider from "@react-native-community/slider";
 
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { api } from "../../convex/_generated/api";
 import { useHydrationStore } from "../../stores/hydrationStore";
 import { useBottleStore } from "../../stores/bottleStore";
@@ -211,6 +212,7 @@ export default function Settings() {
                       } catch (e) {
                         console.warn("BLE disconnect on account delete failed:", e);
                       }
+                      await AsyncStorage.removeItem("hasSeenIntro");
                       await authStore.clearToken();
                       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
                       router.replace("/(auth)/login");

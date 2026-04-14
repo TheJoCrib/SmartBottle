@@ -1,8 +1,9 @@
-import { useEffect } from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { useEffect, useState } from "react";
+import { StyleSheet } from "react-native";
 import { Redirect } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { LinearGradient } from "expo-linear-gradient";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -15,9 +16,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuthStore } from "../stores/authStore";
 import { useHydrationStore } from "../stores/hydrationStore";
 
+const INTRO_KEY = "hasSeenIntro";
+
 export default function Index() {
   const { token, isLoading: authLoading, isAuthenticated } = useAuthStore();
   const { isLoaded: hydrationLoaded } = useHydrationStore();
+
+  const [introSeen, setIntroSeen] = useState<boolean | null>(null);
 
   const dropScale = useSharedValue(0.6);
   const dropOpacity = useSharedValue(0);
@@ -26,6 +31,12 @@ export default function Index() {
   const subtitleOpacity = useSharedValue(0);
 
   useEffect(() => {
+    (async () => {
+      if (__DEV__) await AsyncStorage.removeItem(INTRO_KEY);
+      const val = await AsyncStorage.getItem(INTRO_KEY);
+      setIntroSeen(val === "true");
+    })();
+
     dropOpacity.value = withTiming(1, { duration: 500 });
     dropScale.value = withSequence(
       withTiming(1.1, { duration: 400, easing: Easing.bezier(0.34, 1.56, 0.64, 1) }),
@@ -53,7 +64,7 @@ export default function Index() {
     opacity: subtitleOpacity.value,
   }));
 
-  if (authLoading || !hydrationLoaded) {
+  if (authLoading || !hydrationLoaded || introSeen === null) {
     return (
       <LinearGradient
         colors={["#0EA5E9", "#0284C7", "#0369A1"]}
@@ -73,6 +84,10 @@ export default function Index() {
         </Animated.Text>
       </LinearGradient>
     );
+  }
+
+  if (!introSeen) {
+    return <Redirect href="/intro" />;
   }
 
   if (!isAuthenticated || !token) {
