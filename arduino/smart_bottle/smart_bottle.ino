@@ -7,7 +7,8 @@ const int LOADCELL_DOUT_PIN = 2;
 const int LOADCELL_SCK_PIN  = 3;
 
 const float         NOISE_THRESHOLD           = 5.0f;
-const unsigned long WEIGHT_UPDATE_INTERVAL_MS = 1000;
+const unsigned long WEIGHT_UPDATE_INTERVAL_MS = 50;
+const uint8_t       HX711_SAMPLES_PER_READ    = 5;
 
 #define SERVICE_UUID      "12345678-1234-5678-1234-56789abcdef0"
 #define WEIGHT_CHAR_UUID  "12345678-1234-5678-1234-56789abcdef1"
@@ -98,7 +99,7 @@ void loop() {
   if (now - lastWeightUpdate >= WEIGHT_UPDATE_INTERVAL_MS) {
     lastWeightUpdate = now;
 
-    float reading = scale.get_units(10);
+    float reading = scale.get_units(HX711_SAMPLES_PER_READ);
     if (fabs(reading) < NOISE_THRESHOLD) reading = 0.0f;
 
     Serial.print(F("HX711 reading: "));

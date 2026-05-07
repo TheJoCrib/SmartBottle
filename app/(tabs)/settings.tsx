@@ -85,6 +85,27 @@ function Separator() {
   return <View style={styles.separator} />;
 }
 
+function TestButton({
+  icon,
+  label,
+  onPress,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      style={styles.testBtn}
+      onPress={onPress}
+      activeOpacity={0.6}
+    >
+      {icon}
+      <Text style={styles.testBtnLabel}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
 export default function Settings() {
   const store = useHydrationStore();
   const bottleStore = useBottleStore();
@@ -107,6 +128,83 @@ export default function Settings() {
 
   const [showBottlesModal, setShowBottlesModal] = useState(false);
   const [demoCapacityInput, setDemoCapacityInput] = useState("1000");
+  const [testPanelExpanded, setTestPanelExpanded] = useState(false);
+  const [scheduledCount, setScheduledCount] = useState(0);
+
+  const refreshScheduledCount = useCallback(async () => {
+    try {
+      const Notifications = await import("expo-notifications");
+      const list = await Notifications.getAllScheduledNotificationsAsync();
+      setScheduledCount(list.length);
+    } catch {
+      setScheduledCount(0);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (testPanelExpanded) refreshScheduledCount();
+  }, [testPanelExpanded, refreshScheduledCount]);
+
+  const fireTestReminder = useCallback(async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    await notificationService.sendMotivationalMessage();
+  }, []);
+
+  const fireTestGoalAlert = useCallback(async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    await notificationService.sendGoalAlert(800, 3);
+  }, []);
+
+  const fireTestMilestone = useCallback(async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    await notificationService.sendMilestoneUnlocked("Första litern");
+  }, []);
+
+  const fireTestStreak = useCallback(async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    await notificationService.sendStreakNotification(3);
+  }, []);
+
+  const fireTestMotivational = useCallback(async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    await notificationService.sendMotivationalMessage();
+  }, []);
+
+  const scheduleDelayedTest = useCallback(async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      const Notifications = await import("expo-notifications");
+      const granted = await notificationService.requestPermissions();
+      if (!granted) {
+        Alert.alert("Notiser blockerade", "Aktivera notiser för SmartBottle i systeminställningarna.");
+        return;
+      }
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: "Schemalagd testnotis",
+          body: "Den här notisen schemalades för 10 sekunder sedan. Lås gärna telefonen för att testa låsskärmen.",
+          sound: true,
+          data: { type: "scheduled_test" },
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+          seconds: 10,
+        },
+      });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert("Schemalagd", "Notisen kommer om 10 sekunder. Lås telefonen för att testa.");
+      refreshScheduledCount();
+    } catch (e: any) {
+      Alert.alert("Fel", e?.message || "Kunde inte schemalägga.");
+    }
+  }, [refreshScheduledCount]);
+
+  const cancelAllScheduled = useCallback(async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    await notificationService.cancelAllReminders();
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    refreshScheduledCount();
+  }, [refreshScheduledCount]);
 
   const [editingGoal, setEditingGoal] = useState<"daily" | "weekly" | "monthly" | null>(null);
   const [editValue, setEditValue] = useState("");
@@ -558,6 +656,82 @@ export default function Settings() {
         </Animated.View>
 
         
+        <Text style={styles.sectionHeader}>TEST NOTISER</Text>
+        <Animated.View
+          entering={FadeInDown.duration(300).delay(225)}
+          style={styles.card}
+        >
+          <SettingsRow
+            icon={
+              <Ionicons
+                name="flask-outline"
+                size={18}
+                color="#8B5CF6"
+              />
+            }
+            iconBg="rgba(139,92,246,0.12)"
+            label="Testa notiser"
+            value={testPanelExpanded ? "Dölj" : "Visa"}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setTestPanelExpanded((v) => !v);
+            }}
+          />
+          {testPanelExpanded && (
+            <View style={styles.testPanel}>
+              <Text style={styles.testHelp}>
+                Skicka riktiga notiser till din enhet för att se hur de ser ut.
+              </Text>
+              <View style={styles.testGrid}>
+                <TestButton
+                  icon={<Feather name="bell" size={16} color={colors.accent} />}
+                  label="Påminnelse"
+                  onPress={fireTestReminder}
+                />
+                <TestButton
+                  icon={<Feather name="alert-triangle" size={16} color={colors.warning} />}
+                  label="Mål-varning"
+                  onPress={fireTestGoalAlert}
+                />
+                <TestButton
+                  icon={<Feather name="award" size={16} color={colors.success} />}
+                  label="Milstolpe"
+                  onPress={fireTestMilestone}
+                />
+                <TestButton
+                  icon={<Ionicons name="flame-outline" size={16} color={colors.error} />}
+                  label="Streak"
+                  onPress={fireTestStreak}
+                />
+                <TestButton
+                  icon={<Feather name="zap" size={16} color="#8B5CF6" />}
+                  label="Motiverande"
+                  onPress={fireTestMotivational}
+                />
+                <TestButton
+                  icon={<Feather name="clock" size={16} color={colors.textSecondary} />}
+                  label="Om 10 sek"
+                  onPress={scheduleDelayedTest}
+                />
+              </View>
+              <View style={styles.testFooter}>
+                <Text style={styles.testCountLabel}>
+                  Schemalagda: <Text style={styles.testCountValue}>{scheduledCount} st</Text>
+                </Text>
+                <TouchableOpacity
+                  style={styles.testCancelBtn}
+                  onPress={cancelAllScheduled}
+                  activeOpacity={0.7}
+                >
+                  <Feather name="x-circle" size={14} color={colors.error} />
+                  <Text style={styles.testCancelText}>Avbryt alla</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        </Animated.View>
+
+        
         <Text style={styles.sectionHeader}>DATA</Text>
         <Animated.View
           entering={FadeInDown.duration(300).delay(250)}
@@ -805,6 +979,74 @@ const styles = StyleSheet.create({
   demoCapUnit: { fontSize: 13, color: colors.textMuted, marginLeft: 4 },
   demoScale: { flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 4 },
   demoScaleText: { fontSize: 11, color: colors.textMuted },
+
+  testPanel: {
+    paddingHorizontal: spacing.cardPadding,
+    paddingBottom: 14,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: 12,
+  },
+  testHelp: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginBottom: 12,
+    lineHeight: 16,
+  },
+  testGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  testBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: colors.elevated,
+    borderWidth: 1,
+    borderColor: colors.border,
+    minWidth: "31%",
+  },
+  testBtnLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: colors.textPrimary,
+    flexShrink: 1,
+  },
+  testFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  testCountLabel: {
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  testCountValue: {
+    fontWeight: "700",
+    color: colors.textPrimary,
+  },
+  testCancelBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    backgroundColor: colors.errorMuted,
+  },
+  testCancelText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: colors.error,
+  },
 
   goalEditRow: {
     flexDirection: "row",

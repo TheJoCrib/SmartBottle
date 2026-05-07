@@ -17,7 +17,7 @@ const LOG_DEBOUNCE_MS = 5000;
 const STABILITY_SAMPLES = 3;
 const STABILITY_TOLERANCE_G = 5;
 
-const MAX_MEASURING_MS = 12000;
+const MAX_MEASURING_MS = 4000;
 
 export function useHydration(): void {
   const currentWeight = useBottleStore((s) => s.currentWeight);
