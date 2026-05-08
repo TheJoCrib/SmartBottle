@@ -26,8 +26,11 @@ export default defineSchema({
     xp: v.number(),
     level: v.number(),
     createdAt: v.number(),
+    mirrorShareCode: v.optional(v.string()),
+    mirrorEnabled: v.optional(v.boolean()),
   })
-    .index("by_email", ["email"]),
+    .index("by_email", ["email"])
+    .index("by_mirror_code", ["mirrorShareCode"]),
 
   sessions: defineTable({
     userId: v.id("users"),
