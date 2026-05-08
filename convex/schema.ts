@@ -52,6 +52,7 @@ export default defineSchema({
     bleDeviceId: v.optional(v.string()),
     isActive: v.boolean(),
     createdAt: v.number(),
+    lastRefillAt: v.optional(v.number()),
   })
     .index("by_user", ["userId"])
     .index("by_ble_device", ["bleDeviceId"]),

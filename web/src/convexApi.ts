@@ -1,3 +1,3 @@
-import { api as generatedApi } from "../../convex/_generated/api";
+import { anyApi } from "convex/server";
 
-export const api = generatedApi as any;
+export const api = anyApi as any;

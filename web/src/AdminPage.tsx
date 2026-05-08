@@ -17,8 +17,14 @@ export function AdminPage() {
   const login = useMutation(api.auth.login);
   const enable = useMutation(api.mirror.enable);
   const disable = useMutation(api.mirror.disable);
+  const logTestDrink = useMutation(api.mirror.logTestDrink);
+  const refillBottle = useMutation(api.mirror.refillBottle);
 
   const me = useQuery(api.mirror.getMyShareCode, token ? { token } : "skip");
+  const liveState = useQuery(
+    api.mirror.getState,
+    me?.code && me?.enabled ? { shareCode: me.code } : "skip",
+  ) as any;
 
   async function onLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -180,6 +186,70 @@ export function AdminPage() {
               {mirrorUrl}
             </a>
             <div style={{ height: 24 }} />
+
+            {liveState?.bottles?.length > 0 && (
+              <div style={debugCardStyle}>
+                <div style={debugTitleStyle}>Test & återfyllning</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {liveState.bottles.map((b: any) => (
+                    <div key={b._id} style={debugRowStyle}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={debugBottleNameStyle}>{b.name}</div>
+                        <div style={debugBottleMetaStyle}>
+                          {b.waterRemainingMl} / {b.capacityMl} ml ·{" "}
+                          {Math.round(b.fillPercentage * 100)}%
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button
+                          disabled={busy}
+                          onClick={async () => {
+                            setBusy(true);
+                            setError(null);
+                            try {
+                              await logTestDrink({
+                                token,
+                                bottleId: b._id,
+                                amountMl: 200,
+                              });
+                            } catch (err: any) {
+                              setError(err?.message || "Kunde inte logga klunk");
+                            } finally {
+                              setBusy(false);
+                            }
+                          }}
+                          style={smallBtnStyle("#38BDF8")}
+                        >
+                          −200 ml
+                        </button>
+                        <button
+                          disabled={busy}
+                          onClick={async () => {
+                            setBusy(true);
+                            setError(null);
+                            try {
+                              await refillBottle({ token, bottleId: b._id });
+                            } catch (err: any) {
+                              setError(err?.message || "Kunde inte återfylla");
+                            } finally {
+                              setBusy(false);
+                            }
+                          }}
+                          style={smallBtnStyle("#4ADE80")}
+                        >
+                          Fyll
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div style={debugHintStyle}>
+                  Tryck −200 ml för att simulera en klunk · Fyll för att återställa
+                  flaskan till full
+                </div>
+              </div>
+            )}
+
             <button onClick={onDisable} disabled={busy} style={dangerBtn(busy)}>
               Stäng av spegling
             </button>
@@ -315,3 +385,64 @@ const codeValue: React.CSSProperties = {
   color: "var(--accent)",
   letterSpacing: 1,
 };
+
+const debugCardStyle: React.CSSProperties = {
+  background: "rgba(255,255,255,0.03)",
+  border: "1px solid var(--border-medium)",
+  borderRadius: 14,
+  padding: 14,
+  marginBottom: 16,
+};
+
+const debugTitleStyle: React.CSSProperties = {
+  fontSize: 12,
+  fontWeight: 700,
+  letterSpacing: 0.5,
+  color: "var(--text-muted)",
+  textTransform: "uppercase",
+  marginBottom: 10,
+};
+
+const debugRowStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  padding: "8px 10px",
+  background: "rgba(255,255,255,0.03)",
+  borderRadius: 10,
+};
+
+const debugBottleNameStyle: React.CSSProperties = {
+  fontSize: 14,
+  fontWeight: 600,
+  color: "var(--text-primary)",
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+};
+
+const debugBottleMetaStyle: React.CSSProperties = {
+  fontSize: 11,
+  color: "var(--text-muted)",
+  marginTop: 2,
+  fontVariantNumeric: "tabular-nums",
+};
+
+const debugHintStyle: React.CSSProperties = {
+  fontSize: 11,
+  color: "var(--text-muted)",
+  marginTop: 10,
+  lineHeight: 1.5,
+};
+
+const smallBtnStyle = (color: string): React.CSSProperties => ({
+  background: `${color}1F`,
+  color: color,
+  fontSize: 12,
+  fontWeight: 700,
+  padding: "8px 10px",
+  borderRadius: 10,
+  border: `1px solid ${color}40`,
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+});

@@ -1,7 +1,7 @@
-import React from "react";
 import ReactDOM from "react-dom/client";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
 import App from "./App";
+import { ErrorBoundary } from "./ErrorBoundary";
 import "./styles.css";
 
 const convexUrl =
@@ -11,9 +11,9 @@ const convexUrl =
 const convex = new ConvexReactClient(convexUrl);
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
+  <ErrorBoundary>
     <ConvexProvider client={convex}>
       <App />
     </ConvexProvider>
-  </React.StrictMode>,
+  </ErrorBoundary>,
 );

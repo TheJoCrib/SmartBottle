@@ -12,6 +12,80 @@ function generateShareCode(): string {
   return out;
 }
 
+export const refillBottle = mutation({
+  args: { token: v.string(), bottleId: v.id("bottles") },
+  handler: async (ctx, args) => {
+    const session = await ctx.db
+      .query("sessions")
+      .withIndex("by_token", (q) => q.eq("token", args.token))
+      .first();
+    if (!session || session.expiresAt < Date.now()) {
+      throw new Error("Invalid session");
+    }
+    const bottle = await ctx.db.get(args.bottleId);
+    if (!bottle || bottle.userId !== session.userId) {
+      throw new Error("Bottle not found");
+    }
+    await ctx.db.patch(args.bottleId, { lastRefillAt: Date.now() });
+    return { success: true };
+  },
+});
+
+export const logTestDrink = mutation({
+  args: {
+    token: v.string(),
+    bottleId: v.optional(v.id("bottles")),
+    amountMl: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const session = await ctx.db
+      .query("sessions")
+      .withIndex("by_token", (q) => q.eq("token", args.token))
+      .first();
+    if (!session || session.expiresAt < Date.now()) {
+      throw new Error("Invalid session");
+    }
+
+    let beverageTypeId = null as null | (typeof session.userId);
+    const userBev = await ctx.db
+      .query("beverageTypes")
+      .withIndex("by_user", (q) => q.eq("userId", session.userId))
+      .first();
+    if (userBev) {
+      beverageTypeId = userBev._id as any;
+    } else {
+      const defaultBev = await ctx.db
+        .query("beverageTypes")
+        .withIndex("by_default", (q) => q.eq("isDefault", true))
+        .first();
+      if (defaultBev) beverageTypeId = defaultBev._id as any;
+    }
+    if (!beverageTypeId) {
+      throw new Error("Inga drycktyper hittades");
+    }
+
+    let bottleId = args.bottleId;
+    if (!bottleId) {
+      const activeBottle = await ctx.db
+        .query("bottles")
+        .withIndex("by_user", (q) => q.eq("userId", session.userId))
+        .first();
+      if (activeBottle) bottleId = activeBottle._id;
+    }
+
+    await ctx.db.insert("drinkLogs", {
+      userId: session.userId,
+      bottleId,
+      beverageTypeId: beverageTypeId as any,
+      amountMl: args.amountMl,
+      timestamp: Date.now(),
+      isManual: true,
+    });
+
+    return { success: true };
+  },
+});
+
 export const enable = mutation({
   args: { token: v.string() },
   handler: async (ctx, args) => {
@@ -143,28 +217,60 @@ export const getState = query({
         : null,
       bottles: bottles.map((b) => {
         const bottleDrinks = drinks.filter((d) => d.bottleId === b._id);
-        const consumedFromBottle = bottleDrinks.reduce(
-          (sum, d) => sum + d.amountMl,
-          0,
-        );
-        const capacity = Math.max(0, b.fullWeightG - b.emptyWeightG);
-        const remaining = Math.max(0, capacity - consumedFromBottle);
+        const tagged = bottleDrinks.reduce((sum, d) => sum + d.amountMl, 0);
+
+        const calibratedCapacity = Math.max(0, b.fullWeightG - b.emptyWeightG);
+        const capacity =
+          calibratedCapacity > 0
+            ? calibratedCapacity
+            : b.capacityMl > 0
+              ? b.capacityMl
+              : 1000;
+
+        const refillAt = b.lastRefillAt ?? 0;
+
+        let consumedSinceRefill: number;
+        let lastEventTs: number | null;
+
+        if (tagged > 0 || bottleDrinks.length > 0) {
+          const sinceRefill = bottleDrinks.filter(
+            (d) => d.timestamp >= refillAt,
+          );
+          consumedSinceRefill = sinceRefill.reduce(
+            (sum, d) => sum + d.amountMl,
+            0,
+          );
+          lastEventTs = sinceRefill.length
+            ? Math.max(...sinceRefill.map((d) => d.timestamp))
+            : null;
+        } else {
+          const fallbackDrinks = drinks.filter((d) => d.timestamp >= refillAt);
+          consumedSinceRefill = fallbackDrinks.reduce(
+            (sum, d) => sum + d.amountMl,
+            0,
+          );
+          lastEventTs = fallbackDrinks.length
+            ? Math.max(...fallbackDrinks.map((d) => d.timestamp))
+            : null;
+        }
+
+        const remaining = Math.max(0, capacity - consumedSinceRefill);
         const fillPercentage = capacity > 0 ? remaining / capacity : 0;
+
         return {
           _id: b._id,
           name: b.name,
           icon: b.icon,
           color: b.color,
-          capacityMl: capacity || b.capacityMl,
+          capacityMl: capacity,
           isActive: b.isActive,
           isCalibrated: b.fullWeightG > 0,
-          consumedMl: consumedFromBottle,
+          consumedMl: consumedSinceRefill,
           waterRemainingMl: remaining,
           fillPercentage,
           drinkCount: bottleDrinks.length,
-          lastDrinkAt: bottleDrinks.length
-            ? Math.max(...bottleDrinks.map((d) => d.timestamp))
-            : null,
+          lastDrinkAt: lastEventTs,
+          lastRefillAt: refillAt || null,
         };
       }),
     };

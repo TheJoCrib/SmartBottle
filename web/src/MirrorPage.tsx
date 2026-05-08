@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "./convexApi";
 import { BottleSvg } from "./BottleSvg";
@@ -40,6 +40,8 @@ interface MirrorState {
   bottles: Bottle[];
 }
 
+const RECENT_DRINK_WINDOW_MS = 6000;
+
 export function MirrorPage({ shareCode }: MirrorPageProps) {
   const state = useQuery(api.mirror.getState, { shareCode }) as
     | MirrorState
@@ -50,6 +52,12 @@ export function MirrorPage({ shareCode }: MirrorPageProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const lastDrinkTsRef = useRef<number | null>(null);
   const [drinkFlash, setDrinkFlash] = useState<{ amount: number; key: number } | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     if (!state) return;
@@ -103,39 +111,51 @@ export function MirrorPage({ shareCode }: MirrorPageProps) {
 
   const showPicker = state.bottles.length > 1;
 
-  const recentDrinks = useMemo(
-    () => state.drinks.slice().sort((a, b) => b.timestamp - a.timestamp).slice(0, 6),
-    [state.drinks],
-  );
+  const recentDrinkTs = selectedBottle?.lastDrinkAt ?? state.lastDrink?.timestamp ?? null;
+  const isRecentDrink = recentDrinkTs !== null && now - recentDrinkTs < RECENT_DRINK_WINDOW_MS;
+
+  let bottleState: "on_scale" | "off_scale" | "disconnected" = "on_scale";
+  if (!selectedBottle) {
+    bottleState = "disconnected";
+  } else if (isRecentDrink) {
+    bottleState = "off_scale";
+  }
+
+  const currentMl = selectedBottle?.waterRemainingMl ?? 0;
+  const fillPercentage = selectedBottle?.fillPercentage ?? 0;
 
   return (
     <div style={pageStyle}>
       <div style={contentStyle}>
         <header style={headerStyle} className="fade-in-up delay-50">
-          <div>
-            <div style={greetingStyle}>
-              {getGreeting()}, {state.presenter.name}
+          <div style={greetingStyle}>
+            {getGreeting()}, {state.presenter.name}
+          </div>
+          <div style={statusRowStyle}>
+            <div style={livePillStyle}>
+              <span className="live-pill-dot" />
+              <span style={livePillTextStyle}>LIVE</span>
             </div>
-            <div style={statusRowStyle}>
-              <div style={livePillStyle}>
-                <span className="live-pill-dot" />
-                <span style={livePillTextStyle}>LIVE</span>
+            {state.streak > 0 && (
+              <div style={streakPillStyle}>
+                <FireIcon />
+                <span style={streakTextStyle}>{state.streak} dagar</span>
               </div>
-              {state.streak > 0 && (
-                <div style={streakPillStyle}>
-                  <span style={{ fontSize: 14 }}>🔥</span>
-                  <span style={streakTextStyle}>
-                    {state.streak} dagar
-                  </span>
-                </div>
-              )}
-            </div>
+            )}
           </div>
         </header>
 
         <section style={progressSectionStyle} className="fade-in-up delay-100">
           <div style={progressHeaderStyle}>
-            <div style={progressLabelStyle}>Dagens mål</div>
+            <div style={progressLabelRowStyle}>
+              <div style={progressLabelStyle}>Dagens mål</div>
+              {isRecentDrink && (
+                <div style={measureBadgeStyle}>
+                  <span style={measureDotStyle} />
+                  <span style={measureTextStyle}>Mäter...</span>
+                </div>
+              )}
+            </div>
             <div style={progressValueStyle}>
               <AnimatedNumber value={state.todayIntakeMl} />
               <span style={{ color: "var(--text-muted)" }}> / </span>
@@ -153,12 +173,12 @@ export function MirrorPage({ shareCode }: MirrorPageProps) {
         </section>
 
         {showPicker && (
-          <div className="fade-in-up delay-150">
+          <div className="fade-in-up delay-150" style={{ position: "relative" }}>
             <button
               style={pickerButtonStyle}
               onClick={() => setPickerOpen((v) => !v)}
             >
-              <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <BottleDot color={selectedBottle?.color || "#38BDF8"} />
                 <span style={pickerNameStyle}>
                   {selectedBottle?.name ?? "Välj flaska"}
@@ -169,43 +189,67 @@ export function MirrorPage({ shareCode }: MirrorPageProps) {
                   color: "var(--text-muted)",
                   transform: pickerOpen ? "rotate(180deg)" : "rotate(0deg)",
                   transition: "transform 200ms ease",
-                  fontSize: 18,
+                  fontSize: 16,
                   lineHeight: 1,
+                  display: "inline-flex",
                 }}
               >
-                ▾
+                <ChevronDownIcon />
               </span>
             </button>
             {pickerOpen && (
-              <div style={pickerListStyle}>
-                {state.bottles.map((b) => {
-                  const active = b._id === selectedBottleId;
-                  return (
-                    <button
-                      key={b._id}
-                      onClick={() => {
-                        setSelectedBottleId(b._id);
-                        setPickerOpen(false);
-                      }}
-                      style={{
-                        ...pickerItemStyle,
-                        background: active ? "rgba(56,189,248,0.08)" : "transparent",
-                      }}
-                    >
-                      <BottleDot color={b.color || "#38BDF8"} />
-                      <div style={{ flex: 1, textAlign: "left" }}>
-                        <div style={pickerItemNameStyle}>{b.name}</div>
-                        <div style={pickerItemMetaStyle}>
-                          {b.isCalibrated
-                            ? `${b.capacityMl} ml`
-                            : "Ej kalibrerad"}
+              <>
+                <div
+                  onClick={() => setPickerOpen(false)}
+                  style={{
+                    position: "fixed",
+                    inset: 0,
+                    background: "rgba(0,0,0,0.4)",
+                    zIndex: 10,
+                  }}
+                />
+                <div style={pickerListStyle}>
+                  {state.bottles.map((b) => {
+                    const active = b._id === selectedBottleId;
+                    return (
+                      <button
+                        key={b._id}
+                        onClick={() => {
+                          setSelectedBottleId(b._id);
+                          setPickerOpen(false);
+                        }}
+                        style={{
+                          ...pickerItemStyle,
+                          background: active ? "rgba(56,189,248,0.10)" : "transparent",
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: 44,
+                            height: 44,
+                            borderRadius: 12,
+                            background: (b.color || "#38BDF8") + "20",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <BottleIconSm color={b.color || "#38BDF8"} />
                         </div>
-                      </div>
-                      {active && <span style={{ color: "var(--accent)" }}>✓</span>}
-                    </button>
-                  );
-                })}
-              </div>
+                        <div style={{ flex: 1, textAlign: "left" }}>
+                          <div style={pickerItemNameStyle}>{b.name}</div>
+                          <div style={pickerItemMetaStyle}>
+                            {b.isCalibrated
+                              ? `${b.capacityMl} ml`
+                              : "Ej kalibrerad"}
+                          </div>
+                        </div>
+                        {active && <CheckIcon color="#38BDF8" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
             )}
           </div>
         )}
@@ -214,11 +258,11 @@ export function MirrorPage({ shareCode }: MirrorPageProps) {
           {selectedBottle ? (
             <>
               <BottleSvg
-                fillPercentage={selectedBottle.fillPercentage}
-                bottleState={selectedBottle.isCalibrated ? "on_scale" : "disconnected"}
-                color={selectedBottle.color}
-                width={Math.min(220, window.innerWidth * 0.55)}
-                height={Math.min(window.innerHeight * 0.35, 290)}
+                fillPercentage={fillPercentage}
+                currentMl={currentMl}
+                bottleState={bottleState}
+                width={Math.min(220, typeof window !== "undefined" ? window.innerWidth * 0.55 : 220)}
+                height={Math.min(typeof window !== "undefined" ? window.innerHeight * 0.4 : 290, 290)}
               />
               {drinkFlash && (
                 <div key={drinkFlash.key} style={drinkFlashStyle}>
@@ -258,40 +302,6 @@ export function MirrorPage({ shareCode }: MirrorPageProps) {
           </section>
         )}
 
-        {recentDrinks.length > 0 && (
-          <section style={recentSectionStyle} className="fade-in-up">
-            <div style={sectionTitleStyle}>Senaste klunkar</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {recentDrinks.map((d) => (
-                <div key={d._id} style={drinkRowStyle}>
-                  <div
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 10,
-                      background: "rgba(56,189,248,0.12)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 16,
-                    }}
-                  >
-                    💧
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 15, fontWeight: 600 }}>
-                      {d.amountMl} ml
-                    </div>
-                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                      {formatTime(d.timestamp)} {d.isManual ? "• manuellt" : "• automatiskt"}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-
         <footer style={footerStyle}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
             <span className="live-pill-dot" />
@@ -318,6 +328,61 @@ function BottleDot({ color }: { color: string }) {
   );
 }
 
+function FireIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+      <path
+        d="M13 2C13 2 14.5 5.5 14.5 8C14.5 9.93 13.07 11.5 11.5 11.5C9.93 11.5 8.5 9.93 8.5 8.5C8.5 8.5 7 11 7 14C7 17.5 9.5 20 12.5 20C15.5 20 18 17.5 18 14C18 9.5 13 2 13 2Z"
+        fill="#FBBF24"
+      />
+    </svg>
+  );
+}
+
+function ChevronDownIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <path
+        d="M6 9L12 15L18 9"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function CheckIcon({ color }: { color: string }) {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+      <path
+        d="M20 6L9 17L4 12"
+        stroke={color}
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function BottleIconSm({ color }: { color: string }) {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+      <path
+        d="M9 2v3.5a1 1 0 0 1-.3.7L7 8c-.6.6-1 1.4-1 2.3V20a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-9.7c0-.9-.4-1.7-1-2.3l-1.7-1.8a1 1 0 0 1-.3-.7V2"
+        stroke={color}
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+      <path d="M9 2h6" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function CenteredMessage({ title, body }: { title: string; body?: string }) {
   return (
     <div
@@ -331,17 +396,14 @@ function CenteredMessage({ title, body }: { title: string; body?: string }) {
     >
       <div style={{ textAlign: "center", maxWidth: 360 }}>
         <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 8 }}>{title}</div>
-        {body && <div style={{ color: "var(--text-secondary)", fontSize: 14, lineHeight: 1.5 }}>{body}</div>}
+        {body && (
+          <div style={{ color: "var(--text-secondary)", fontSize: 14, lineHeight: 1.5 }}>
+            {body}
+          </div>
+        )}
       </div>
     </div>
   );
-}
-
-function formatTime(ts: number): string {
-  const date = new Date(ts);
-  const hh = date.getHours().toString().padStart(2, "0");
-  const mm = date.getMinutes().toString().padStart(2, "0");
-  return `${hh}:${mm}`;
 }
 
 const pageStyle: React.CSSProperties = {
@@ -353,7 +415,7 @@ const pageStyle: React.CSSProperties = {
 const contentStyle: React.CSSProperties = {
   maxWidth: 480,
   margin: "0 auto",
-  padding: "24px 20px 60px 20px",
+  padding: "16px 20px 60px 20px",
 };
 
 const headerStyle: React.CSSProperties = {
@@ -364,13 +426,14 @@ const greetingStyle: React.CSSProperties = {
   fontSize: 26,
   fontWeight: 800,
   letterSpacing: -0.5,
+  color: "var(--text-primary)",
 };
 
 const statusRowStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 8,
-  marginTop: 8,
+  gap: 10,
+  marginTop: 6,
 };
 
 const livePillStyle: React.CSSProperties = {
@@ -379,8 +442,8 @@ const livePillStyle: React.CSSProperties = {
   gap: 6,
   background: "rgba(74, 222, 128, 0.12)",
   border: "1px solid rgba(74, 222, 128, 0.25)",
-  padding: "4px 10px",
-  borderRadius: 10,
+  padding: "3px 10px",
+  borderRadius: 8,
 };
 
 const livePillTextStyle: React.CSSProperties = {
@@ -393,10 +456,10 @@ const livePillTextStyle: React.CSSProperties = {
 const streakPillStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 4,
+  gap: 3,
   background: "var(--warning-muted)",
-  padding: "4px 10px",
-  borderRadius: 10,
+  padding: "3px 8px",
+  borderRadius: 8,
 };
 
 const streakTextStyle: React.CSSProperties = {
@@ -406,7 +469,7 @@ const streakTextStyle: React.CSSProperties = {
 };
 
 const progressSectionStyle: React.CSSProperties = {
-  paddingTop: 20,
+  paddingTop: 16,
   paddingBottom: 12,
 };
 
@@ -417,15 +480,46 @@ const progressHeaderStyle: React.CSSProperties = {
   marginBottom: 10,
 };
 
+const progressLabelRowStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+};
+
 const progressLabelStyle: React.CSSProperties = {
   fontSize: 15,
   fontWeight: 700,
+  color: "var(--text-primary)",
+};
+
+const measureBadgeStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 5,
+  background: "var(--primary-muted)",
+  padding: "3px 8px",
+  borderRadius: 10,
+  animation: "measure-pulse 1.4s ease-in-out infinite",
+};
+
+const measureDotStyle: React.CSSProperties = {
+  width: 6,
+  height: 6,
+  borderRadius: 3,
+  background: "var(--accent)",
+};
+
+const measureTextStyle: React.CSSProperties = {
+  fontSize: 11,
+  fontWeight: 600,
+  color: "var(--accent)",
 };
 
 const progressValueStyle: React.CSSProperties = {
   fontSize: 14,
   fontWeight: 500,
   color: "var(--text-secondary)",
+  fontVariantNumeric: "tabular-nums",
 };
 
 const progressTrackStyle: React.CSSProperties = {
@@ -438,7 +532,7 @@ const progressTrackStyle: React.CSSProperties = {
 const progressFillStyle: React.CSSProperties = {
   height: "100%",
   borderRadius: 4,
-  background: "linear-gradient(90deg, #38BDF8 0%, #3B82F6 100%)",
+  background: "var(--accent)",
   transition: "width 700ms cubic-bezier(0.4, 0, 0.2, 1)",
 };
 
@@ -462,11 +556,16 @@ const pickerNameStyle: React.CSSProperties = {
 };
 
 const pickerListStyle: React.CSSProperties = {
+  position: "absolute",
+  top: "calc(100% + 4px)",
+  left: 0,
+  right: 0,
   background: "var(--surface)",
-  border: "1px solid var(--border)",
-  borderRadius: 12,
-  padding: 4,
-  marginBottom: 8,
+  border: "1px solid var(--border-medium)",
+  borderRadius: 16,
+  padding: 8,
+  zIndex: 20,
+  boxShadow: "0 24px 60px rgba(0,0,0,0.5)",
 };
 
 const pickerItemStyle: React.CSSProperties = {
@@ -475,12 +574,12 @@ const pickerItemStyle: React.CSSProperties = {
   gap: 12,
   width: "100%",
   padding: "10px 12px",
-  borderRadius: 10,
+  borderRadius: 12,
   border: "none",
 };
 
 const pickerItemNameStyle: React.CSSProperties = {
-  fontSize: 14,
+  fontSize: 16,
   fontWeight: 600,
   color: "var(--text-primary)",
 };
@@ -495,14 +594,14 @@ const bottleSectionStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
   alignItems: "center",
-  paddingTop: 12,
-  paddingBottom: 16,
+  paddingTop: 16,
+  paddingBottom: 8,
   position: "relative",
 };
 
 const drinkFlashStyle: React.CSSProperties = {
   position: "absolute",
-  top: "20%",
+  top: "8%",
   background: "rgba(56, 189, 248, 0.95)",
   color: "#0F172A",
   fontSize: 22,
@@ -533,6 +632,7 @@ const summaryValueStyle: React.CSSProperties = {
   fontSize: 20,
   fontWeight: 800,
   color: "var(--text-primary)",
+  fontVariantNumeric: "tabular-nums",
 };
 
 const summaryLabelStyle: React.CSSProperties = {
@@ -545,29 +645,6 @@ const summaryLabelStyle: React.CSSProperties = {
 const summaryDividerStyle: React.CSSProperties = {
   width: 1,
   background: "var(--border)",
-};
-
-const recentSectionStyle: React.CSSProperties = {
-  marginTop: 28,
-};
-
-const sectionTitleStyle: React.CSSProperties = {
-  fontSize: 13,
-  fontWeight: 600,
-  letterSpacing: 0.5,
-  color: "var(--text-muted)",
-  textTransform: "uppercase",
-  marginBottom: 12,
-};
-
-const drinkRowStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 12,
-  background: "var(--surface)",
-  border: "1px solid var(--border)",
-  borderRadius: 12,
-  padding: "10px 12px",
 };
 
 const footerStyle: React.CSSProperties = {
