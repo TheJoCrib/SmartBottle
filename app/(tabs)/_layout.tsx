@@ -8,6 +8,7 @@ import { colors } from "../../constants/theme";
 import { useHydration } from "../../hooks/useHydration";
 import { useNotifications } from "../../hooks/useNotifications";
 import { useBleAutoConnect } from "../../hooks/useBleAutoConnect";
+import { useLiveWeightSync } from "../../hooks/useLiveWeightSync";
 
 export default function TabsLayout() {
   const insets = useSafeAreaInsets();
@@ -17,6 +18,8 @@ export default function TabsLayout() {
   useNotifications();
 
   useBleAutoConnect();
+
+  useLiveWeightSync();
 
   return (
     <Tabs

@@ -217,7 +217,6 @@ export const getState = query({
         : null,
       bottles: bottles.map((b) => {
         const bottleDrinks = drinks.filter((d) => d.bottleId === b._id);
-        const tagged = bottleDrinks.reduce((sum, d) => sum + d.amountMl, 0);
 
         const calibratedCapacity = Math.max(0, b.fullWeightG - b.emptyWeightG);
         const capacity =
@@ -228,34 +227,38 @@ export const getState = query({
               : 1000;
 
         const refillAt = b.lastRefillAt ?? 0;
+        const sinceRefill = bottleDrinks.filter((d) => d.timestamp >= refillAt);
+        const consumedSinceRefill = sinceRefill.reduce(
+          (sum, d) => sum + d.amountMl,
+          0,
+        );
+        const lastDrinkTs = sinceRefill.length
+          ? Math.max(...sinceRefill.map((d) => d.timestamp))
+          : null;
 
-        let consumedSinceRefill: number;
-        let lastEventTs: number | null;
+        const LIVE_WEIGHT_FRESH_MS = 60_000;
+        const liveFresh =
+          b.lastWeightG !== undefined &&
+          b.lastWeightAt !== undefined &&
+          Date.now() - b.lastWeightAt < LIVE_WEIGHT_FRESH_MS;
 
-        if (tagged > 0 || bottleDrinks.length > 0) {
-          const sinceRefill = bottleDrinks.filter(
-            (d) => d.timestamp >= refillAt,
-          );
-          consumedSinceRefill = sinceRefill.reduce(
-            (sum, d) => sum + d.amountMl,
+        let remaining: number;
+        let fillPercentage: number;
+        let source: "live" | "drinks";
+
+        if (liveFresh && b.fullWeightG > 0) {
+          const liveRemaining = Math.max(
             0,
+            Math.round((b.lastWeightG ?? 0) - b.emptyWeightG),
           );
-          lastEventTs = sinceRefill.length
-            ? Math.max(...sinceRefill.map((d) => d.timestamp))
-            : null;
+          remaining = Math.min(liveRemaining, capacity);
+          fillPercentage = capacity > 0 ? remaining / capacity : 0;
+          source = "live";
         } else {
-          const fallbackDrinks = drinks.filter((d) => d.timestamp >= refillAt);
-          consumedSinceRefill = fallbackDrinks.reduce(
-            (sum, d) => sum + d.amountMl,
-            0,
-          );
-          lastEventTs = fallbackDrinks.length
-            ? Math.max(...fallbackDrinks.map((d) => d.timestamp))
-            : null;
+          remaining = Math.max(0, capacity - consumedSinceRefill);
+          fillPercentage = capacity > 0 ? remaining / capacity : 0;
+          source = "drinks";
         }
-
-        const remaining = Math.max(0, capacity - consumedSinceRefill);
-        const fillPercentage = capacity > 0 ? remaining / capacity : 0;
 
         return {
           _id: b._id,
@@ -269,8 +272,11 @@ export const getState = query({
           waterRemainingMl: remaining,
           fillPercentage,
           drinkCount: bottleDrinks.length,
-          lastDrinkAt: lastEventTs,
+          lastDrinkAt: lastDrinkTs,
           lastRefillAt: refillAt || null,
+          liveWeightG: liveFresh ? (b.lastWeightG ?? null) : null,
+          lastWeightAt: liveFresh ? (b.lastWeightAt ?? null) : null,
+          source,
         };
       }),
     };

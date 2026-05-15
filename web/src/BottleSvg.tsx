@@ -246,12 +246,12 @@ export function BottleSvg({
             style={{
               fontSize: 48,
               fontWeight: 800,
-              color: isDisconnected ? "rgba(255,255,255,0.3)" : "#F1F5F9",
+              color: isDisconnected ? "rgba(255,255,255,0.3)" : "#FFFFFF",
               letterSpacing: -2,
               marginTop: 2,
               textShadow: isDisconnected
                 ? "none"
-                : "0 2px 8px rgba(0,0,0,0.35)",
+                : "0 2px 12px rgba(0,0,0,0.55), 0 1px 2px rgba(0,0,0,0.45)",
               fontVariantNumeric: "tabular-nums",
               lineHeight: 1,
             }}
@@ -262,11 +262,13 @@ export function BottleSvg({
           <div
             style={{
               fontSize: 15,
-              fontWeight: 500,
-              color: isDisconnected ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.7)",
+              fontWeight: 600,
+              color: isDisconnected ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.92)",
               letterSpacing: 0.5,
               marginTop: -4,
-              textShadow: isDisconnected ? "none" : "0 1px 4px rgba(0,0,0,0.2)",
+              textShadow: isDisconnected
+                ? "none"
+                : "0 1px 6px rgba(0,0,0,0.55)",
             }}
           >
             {isDisconnected ? "Frånkopplad" : "ml kvar"}

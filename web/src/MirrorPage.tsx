@@ -22,6 +22,9 @@ interface Bottle {
   fillPercentage: number;
   drinkCount: number;
   lastDrinkAt: number | null;
+  liveWeightG?: number | null;
+  lastWeightAt?: number | null;
+  source?: "live" | "drinks";
 }
 
 interface MirrorState {
@@ -136,6 +139,12 @@ export function MirrorPage({ shareCode }: MirrorPageProps) {
               <span className="live-pill-dot" />
               <span style={livePillTextStyle}>LIVE</span>
             </div>
+            {selectedBottle?.source === "live" && (
+              <div style={bleSourcePillStyle}>
+                <BluetoothIcon />
+                <span style={bleSourcePillTextStyle}>BLE</span>
+              </div>
+            )}
             {state.streak > 0 && (
               <div style={streakPillStyle}>
                 <FireIcon />
@@ -173,7 +182,13 @@ export function MirrorPage({ shareCode }: MirrorPageProps) {
         </section>
 
         {showPicker && (
-          <div className="fade-in-up delay-150" style={{ position: "relative" }}>
+          <div
+            className="fade-in-up delay-150"
+            style={{
+              position: "relative",
+              zIndex: pickerOpen ? 50 : 1,
+            }}
+          >
             <button
               style={pickerButtonStyle}
               onClick={() => setPickerOpen((v) => !v)}
@@ -328,6 +343,20 @@ function BottleDot({ color }: { color: string }) {
   );
 }
 
+function BluetoothIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
+      <path
+        d="M7 7l10 10-5 5V2l5 5L7 17"
+        stroke="#38BDF8"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function FireIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
@@ -451,6 +480,23 @@ const livePillTextStyle: React.CSSProperties = {
   fontWeight: 700,
   letterSpacing: 1,
   color: "var(--success)",
+};
+
+const bleSourcePillStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 5,
+  background: "rgba(56, 189, 248, 0.12)",
+  border: "1px solid rgba(56, 189, 248, 0.25)",
+  padding: "3px 8px",
+  borderRadius: 8,
+};
+
+const bleSourcePillTextStyle: React.CSSProperties = {
+  fontSize: 10,
+  fontWeight: 700,
+  letterSpacing: 0.8,
+  color: "var(--accent)",
 };
 
 const streakPillStyle: React.CSSProperties = {
@@ -597,6 +643,7 @@ const bottleSectionStyle: React.CSSProperties = {
   paddingTop: 16,
   paddingBottom: 8,
   position: "relative",
+  zIndex: 0,
 };
 
 const drinkFlashStyle: React.CSSProperties = {

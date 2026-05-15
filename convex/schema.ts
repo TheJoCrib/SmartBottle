@@ -53,6 +53,8 @@ export default defineSchema({
     isActive: v.boolean(),
     createdAt: v.number(),
     lastRefillAt: v.optional(v.number()),
+    lastWeightG: v.optional(v.number()),
+    lastWeightAt: v.optional(v.number()),
   })
     .index("by_user", ["userId"])
     .index("by_ble_device", ["bleDeviceId"]),
