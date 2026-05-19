@@ -1,17 +1,33 @@
 import { create } from "zustand";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const STORE_KEY = "smartbottle_hydration_v2";
+const STORE_KEY = "smartbottle_hydration_v3";
 
 interface PersistedState {
+  activeBottleId: string | null;
+  activeBottleModelId: string;
   fullWeightG: number;
   emptyWeightG: number;
   isCalibrated: boolean;
+
   dailyGoalMl: number;
+  weeklyGoalMl: number;
+  monthlyGoalMl: number;
+
   todayIntakeMl: number;
   lastResetDate: string;
+
   remindersEnabled: boolean;
   reminderIntervalHours: number;
+  demoMode: boolean;
+}
+
+interface ActiveBottleData {
+  id: string;
+  fullWeightG: number;
+  emptyWeightG: number;
+  capacityMl: number;
+  modelId?: string;
 }
 
 interface HydrationState extends PersistedState {
@@ -21,17 +37,33 @@ interface HydrationState extends PersistedState {
 
   calibrate: (fullWeight: number, emptyWeight: number) => Promise<void>;
   resetCalibration: () => Promise<void>;
+
+  setActiveBottle: (bottle: ActiveBottleData) => Promise<void>;
+
   setDailyGoal: (ml: number) => Promise<void>;
+  setWeeklyGoal: (ml: number) => Promise<void>;
+  setMonthlyGoal: (ml: number) => Promise<void>;
+
   addIntake: (ml: number) => Promise<void>;
   resetDailyIntake: () => Promise<void>;
+  resetAll: () => Promise<void>;
+
   setSimulatedWeight: (weight: number) => void;
   refillBottle: () => void;
+
   setReminders: (enabled: boolean) => Promise<void>;
   setReminderInterval: (hours: number) => Promise<void>;
-  loadState: () => Promise<void>;
-  getWaterRemainingMl: () => number;
+  setDemoMode: (enabled: boolean) => Promise<void>;
+
+  getWaterRemainingMl: (realWeightG?: number | null) => number;
   getBottleCapacityMl: () => number;
+  getFillPercentage: (realWeightG?: number | null) => number;
   getStatusText: () => string;
+  getDailyProgress: () => number;
+  getWeeklyProgress: (weekTotalMl: number) => number;
+  getMonthlyProgress: (monthTotalMl: number) => number;
+
+  loadState: () => Promise<void>;
 }
 
 function todayDateString(): string {
@@ -48,26 +80,36 @@ async function persist(state: PersistedState) {
 
 function getPersistedFields(state: HydrationState): PersistedState {
   return {
+    activeBottleId: state.activeBottleId,
+    activeBottleModelId: state.activeBottleModelId,
     fullWeightG: state.fullWeightG,
     emptyWeightG: state.emptyWeightG,
     isCalibrated: state.isCalibrated,
     dailyGoalMl: state.dailyGoalMl,
+    weeklyGoalMl: state.weeklyGoalMl,
+    monthlyGoalMl: state.monthlyGoalMl,
     todayIntakeMl: state.todayIntakeMl,
     lastResetDate: state.lastResetDate,
     remindersEnabled: state.remindersEnabled,
     reminderIntervalHours: state.reminderIntervalHours,
+    demoMode: state.demoMode,
   };
 }
 
 export const useHydrationStore = create<HydrationState>((set, get) => ({
+  activeBottleId: null,
+  activeBottleModelId: "water-bottle",
   fullWeightG: 0,
   emptyWeightG: 0,
   isCalibrated: false,
   dailyGoalMl: 2500,
+  weeklyGoalMl: 17500,
+  monthlyGoalMl: 75000,
   todayIntakeMl: 0,
   lastResetDate: todayDateString(),
   remindersEnabled: true,
   reminderIntervalHours: 2,
+  demoMode: false,
   simulatedWeightG: null,
   previousWeightG: null,
   isLoaded: false,
@@ -85,6 +127,7 @@ export const useHydrationStore = create<HydrationState>((set, get) => ({
 
   resetCalibration: async () => {
     set({
+      activeBottleId: null,
       fullWeightG: 0,
       emptyWeightG: 0,
       isCalibrated: false,
@@ -94,14 +137,43 @@ export const useHydrationStore = create<HydrationState>((set, get) => ({
     await persist(getPersistedFields(get()));
   },
 
+  setActiveBottle: async (bottle: ActiveBottleData) => {
+    set({
+      activeBottleId: bottle.id,
+      fullWeightG: bottle.fullWeightG,
+      emptyWeightG: bottle.emptyWeightG,
+      isCalibrated: true,
+      activeBottleModelId: bottle.modelId || "water-bottle",
+      simulatedWeightG: bottle.fullWeightG,
+      previousWeightG: bottle.fullWeightG,
+    });
+    await persist(getPersistedFields(get()));
+  },
+
   setDailyGoal: async (ml: number) => {
     set({ dailyGoalMl: ml });
     await persist(getPersistedFields(get()));
   },
 
+  setWeeklyGoal: async (ml: number) => {
+    set({ weeklyGoalMl: ml });
+    await persist(getPersistedFields(get()));
+  },
+
+  setMonthlyGoal: async (ml: number) => {
+    set({ monthlyGoalMl: ml });
+    await persist(getPersistedFields(get()));
+  },
+
   addIntake: async (ml: number) => {
-    const current = get().todayIntakeMl;
-    set({ todayIntakeMl: current + ml });
+    const state = get();
+    const today = todayDateString();
+    const rolledOver = state.lastResetDate !== today;
+    const base = rolledOver ? 0 : state.todayIntakeMl;
+    set({
+      todayIntakeMl: base + ml,
+      lastResetDate: today,
+    });
     await persist(getPersistedFields(get()));
   },
 
@@ -110,27 +182,32 @@ export const useHydrationStore = create<HydrationState>((set, get) => ({
     await persist(getPersistedFields(get()));
   },
 
-  setSimulatedWeight: (weight: number) => {
-    const state = get();
-    const prev = state.simulatedWeightG ?? state.fullWeightG;
-    const prevWater = Math.max(0, prev - state.emptyWeightG);
-    const newWater = Math.max(0, weight - state.emptyWeightG);
-    const consumed = prevWater - newWater;
+  resetAll: async () => {
+    set({
+      activeBottleId: null,
+      activeBottleModelId: "water-bottle",
+      fullWeightG: 0,
+      emptyWeightG: 0,
+      isCalibrated: false,
+      dailyGoalMl: 2500,
+      weeklyGoalMl: 17500,
+      monthlyGoalMl: 75000,
+      todayIntakeMl: 0,
+      lastResetDate: todayDateString(),
+      remindersEnabled: true,
+      reminderIntervalHours: 2,
+      demoMode: false,
+      simulatedWeightG: null,
+      previousWeightG: null,
+    });
+    await AsyncStorage.removeItem(STORE_KEY);
+  },
 
-    if (consumed > 0) {
-      const newIntake = state.todayIntakeMl + consumed;
-      set({
-        simulatedWeightG: weight,
-        previousWeightG: weight,
-        todayIntakeMl: newIntake,
-      });
-      persist(getPersistedFields(get()));
-    } else {
-      set({
-        simulatedWeightG: weight,
-        previousWeightG: weight,
-      });
-    }
+  setSimulatedWeight: (weight: number) => {
+    set({
+      simulatedWeightG: weight,
+      previousWeightG: weight,
+    });
   },
 
   refillBottle: () => {
@@ -151,10 +228,24 @@ export const useHydrationStore = create<HydrationState>((set, get) => ({
     await persist(getPersistedFields(get()));
   },
 
-  getWaterRemainingMl: () => {
+  setDemoMode: async (enabled: boolean) => {
+    set({ demoMode: enabled });
+    if (enabled) {
+      const state = get();
+      set({
+        simulatedWeightG: state.fullWeightG,
+        previousWeightG: state.fullWeightG,
+      });
+    }
+    await persist(getPersistedFields(get()));
+  },
+
+  getWaterRemainingMl: (realWeightG?: number | null) => {
     const state = get();
     if (!state.isCalibrated) return 0;
-    const currentWeight = state.simulatedWeightG ?? state.fullWeightG;
+    const currentWeight = state.demoMode
+      ? (state.simulatedWeightG ?? state.fullWeightG)
+      : (realWeightG ?? state.fullWeightG);
     return Math.max(0, Math.round(currentWeight - state.emptyWeightG));
   },
 
@@ -163,11 +254,37 @@ export const useHydrationStore = create<HydrationState>((set, get) => ({
     return Math.max(0, state.fullWeightG - state.emptyWeightG);
   },
 
+  getFillPercentage: (realWeightG?: number | null) => {
+    const state = get();
+    const capacity = state.fullWeightG - state.emptyWeightG;
+    if (capacity <= 0) return 0;
+    const remaining = get().getWaterRemainingMl(realWeightG);
+    return Math.min(1, Math.max(0, remaining / capacity));
+  },
+
   getStatusText: () => {
     const state = get();
-    if (state.todayIntakeMl === 0) return "Inte druckit \u00e4n idag";
-    if (state.todayIntakeMl >= state.dailyGoalMl) return "Dagens m\u00e5l uppn\u00e5tt!";
+    if (state.todayIntakeMl === 0) return "Inte druckit än idag";
+    if (state.todayIntakeMl >= state.dailyGoalMl) return "Dagens mål uppnått!";
     return "Nyss druckit";
+  },
+
+  getDailyProgress: () => {
+    const state = get();
+    if (state.dailyGoalMl <= 0) return 0;
+    return Math.min(1, state.todayIntakeMl / state.dailyGoalMl);
+  },
+
+  getWeeklyProgress: (weekTotalMl: number) => {
+    const state = get();
+    if (state.weeklyGoalMl <= 0) return 0;
+    return Math.min(1, weekTotalMl / state.weeklyGoalMl);
+  },
+
+  getMonthlyProgress: (monthTotalMl: number) => {
+    const state = get();
+    if (state.monthlyGoalMl <= 0) return 0;
+    return Math.min(1, monthTotalMl / state.monthlyGoalMl);
   },
 
   loadState: async () => {

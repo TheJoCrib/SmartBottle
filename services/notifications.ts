@@ -11,16 +11,16 @@ Notifications.setNotificationHandler({
 });
 
 const MOTIVATIONAL_MESSAGES = [
-  { title: "Stay Hydrated! 💧", body: "Time for a refreshing drink of water." },
-  { title: "Water Break! 🌊", body: "Your body needs water to function at its best." },
-  { title: "Hydration Reminder 💦", body: "A glass of water now keeps fatigue away!" },
-  { title: "Drink Up! 🥤", body: "Staying hydrated improves focus and energy." },
-  { title: "H2O Time! 💧", body: "Keep your hydration streak going!" },
-  { title: "Water Check ✨", body: "Have you had water recently? Now's a good time!" },
-  { title: "Stay Fresh! 🌿", body: "Water helps maintain healthy skin and organs." },
-  { title: "Hydration Hero! 🦸", body: "Heroes drink water. Time for your next glass!" },
-  { title: "Your Body Thanks You 🙏", body: "Every sip counts toward better health." },
-  { title: "Don't Forget! 📢", body: "Dehydration sneaks up. Grab some water now!" },
+  { title: "Dags att dricka", body: "Ta en klunk vatten — kroppen tackar dig." },
+  { title: "Vattenpaus", body: "En liten paus för en stor effekt. Drick lite vatten." },
+  { title: "Påminnelse om vätska", body: "Ett glas vatten nu håller tröttheten borta." },
+  { title: "Drick upp", body: "Att hålla sig hydrerad ger bättre fokus och energi." },
+  { title: "Vattendags", body: "Håll igång din vätskestreak — ta ett glas nu." },
+  { title: "Vattenkoll", body: "När drack du senast? Nu är ett bra tillfälle." },
+  { title: "Håll dig fräsch", body: "Vatten håller hud och organ i gott skick." },
+  { title: "Dags för en klunk", body: "Små klunkar ofta är bättre än stora sällan." },
+  { title: "Din kropp tackar dig", body: "Varje klunk räknas mot bättre hälsa." },
+  { title: "Glöm inte", body: "Uttorkning smyger sig på — ta lite vatten nu." },
 ];
 
 class NotificationService {
@@ -135,27 +135,24 @@ class NotificationService {
   async sendGoalAlert(remainingMl: number, hoursLeft: number): Promise<void> {
     const liters = (remainingMl / 1000).toFixed(1);
     await this.sendNotification(
-      "Behind on your goal 📊",
-      `You still need ${liters}L with ${hoursLeft}h left. Pick up the pace!`,
+      "Du ligger efter ditt mål",
+      `Du behöver fortfarande ${liters} L med ${hoursLeft} h kvar. Öka takten!`,
       { type: "goal_alert" }
     );
   }
 
-  async sendAchievementUnlocked(
-    achievementName: string,
-    achievementIcon: string
-  ): Promise<void> {
+  async sendMilestoneUnlocked(milestoneName: string): Promise<void> {
     await this.sendNotification(
-      `Achievement Unlocked! ${achievementIcon}`,
-      `You earned "${achievementName}"! Keep up the great work!`,
-      { type: "achievement" }
+      "Milstolpe nådd",
+      `Du har nått "${milestoneName}". Bra jobbat — fortsätt så!`,
+      { type: "milestone" }
     );
   }
 
   async sendStreakNotification(streakDays: number): Promise<void> {
     await this.sendNotification(
-      `${streakDays} Day Streak! 🔥`,
-      `Amazing! You've met your hydration goal ${streakDays} days in a row!`,
+      `${streakDays} dagars streak`,
+      `Snyggt! Du har nått ditt vätskemål ${streakDays} dagar i rad.`,
       { type: "streak" }
     );
   }

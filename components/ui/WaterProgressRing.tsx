@@ -1,5 +1,6 @@
 import { View, Text, useColorScheme } from "react-native";
 import Svg, { Circle, Defs, LinearGradient, Stop } from "react-native-svg";
+import { Ionicons } from "@expo/vector-icons";
 import { useEffect } from "react";
 import Animated, {
   useAnimatedProps,
@@ -78,7 +79,7 @@ export function WaterProgressRing({
 
       
       <View className="absolute items-center">
-        <Text className="text-4xl">💧</Text>
+        <Ionicons name="water" size={36} color="#0EA5E9" />
         <Text className="text-3xl font-bold text-text-light-primary dark:text-text-dark-primary mt-2">
           {currentMl >= 1000
             ? `${(currentMl / 1000).toFixed(1)}L`

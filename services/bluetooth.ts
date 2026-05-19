@@ -1,15 +1,26 @@
-import { BleManager, Device, Characteristic } from "react-native-ble-plx";
+import {
+  BleManager,
+  Device,
+  Characteristic,
+  BleErrorCode,
+} from "react-native-ble-plx";
 import { Platform, PermissionsAndroid } from "react-native";
 import { useBottleStore } from "../stores/bottleStore";
+import {
+  BLE_SERVICE_UUID,
+  BLE_WEIGHT_CHAR_UUID,
+  BLE_COMMAND_CHAR_UUID,
+} from "../constants";
 
-const SMART_BOTTLE_SERVICE_UUID = "12345678-1234-5678-1234-56789abcdef0";
-const WEIGHT_CHARACTERISTIC_UUID = "12345678-1234-5678-1234-56789abcdef1";
-const BATTERY_CHARACTERISTIC_UUID = "12345678-1234-5678-1234-56789abcdef2";
+const SMART_BOTTLE_SERVICE_UUID = BLE_SERVICE_UUID;
+const WEIGHT_CHARACTERISTIC_UUID = BLE_WEIGHT_CHAR_UUID;
+const COMMAND_CHARACTERISTIC_UUID = BLE_COMMAND_CHAR_UUID;
 
 class BluetoothService {
   private manager: BleManager;
   private connectedDevice: Device | null = null;
   private weightSubscription: any = null;
+  private disconnectSubscription: { remove: () => void } | null = null;
 
   constructor() {
     this.manager = new BleManager();
@@ -101,6 +112,10 @@ class BluetoothService {
       throw new Error("Bluetooth permissions not granted");
     }
 
+    if (this.connectedDevice && this.connectedDevice.id === deviceId) {
+      return this.connectedDevice;
+    }
+
     if (this.connectedDevice) {
       await this.disconnect();
     }
@@ -116,9 +131,16 @@ class BluetoothService {
 
     useBottleStore.getState().setConnected(true, deviceId);
 
-    this.manager.onDeviceDisconnected(deviceId, () => {
-      this.handleDisconnect();
-    });
+    if (this.disconnectSubscription) {
+      this.disconnectSubscription.remove();
+      this.disconnectSubscription = null;
+    }
+    this.disconnectSubscription = this.manager.onDeviceDisconnected(
+      deviceId,
+      () => {
+        this.handleDisconnect();
+      },
+    );
 
     return device;
   }
@@ -128,6 +150,10 @@ class BluetoothService {
       if (this.weightSubscription) {
         this.weightSubscription.remove();
         this.weightSubscription = null;
+      }
+      if (this.disconnectSubscription) {
+        this.disconnectSubscription.remove();
+        this.disconnectSubscription = null;
       }
 
       try {
@@ -142,8 +168,15 @@ class BluetoothService {
   }
 
   private handleDisconnect(): void {
+    if (this.weightSubscription) {
+      this.weightSubscription.remove();
+      this.weightSubscription = null;
+    }
+    if (this.disconnectSubscription) {
+      this.disconnectSubscription.remove();
+      this.disconnectSubscription = null;
+    }
     this.connectedDevice = null;
-    this.weightSubscription = null;
     useBottleStore.getState().disconnect();
   }
 
@@ -154,12 +187,20 @@ class BluetoothService {
       throw new Error("No device connected");
     }
 
+    if (this.weightSubscription) {
+      this.weightSubscription.remove();
+      this.weightSubscription = null;
+    }
+
     this.weightSubscription = this.connectedDevice.monitorCharacteristicForService(
       SMART_BOTTLE_SERVICE_UUID,
       WEIGHT_CHARACTERISTIC_UUID,
       (error, characteristic) => {
         if (error) {
-          console.error("Weight subscription error:", error);
+          if ((error as any)?.errorCode === BleErrorCode.OperationCancelled) {
+            return;
+          }
+          console.warn("Weight subscription error:", error.message);
           return;
         }
 
@@ -173,24 +214,36 @@ class BluetoothService {
     );
   }
 
-  async readBatteryLevel(): Promise<number> {
+  async connectAndStream(
+    deviceId: string,
+    onWeight?: (weightG: number) => void,
+  ): Promise<void> {
+    await this.connect(deviceId);
+    await this.subscribeToWeight(onWeight ?? (() => {}));
+  }
+
+  async sendCommand(command: string): Promise<void> {
     if (!this.connectedDevice) {
       throw new Error("No device connected");
     }
-
-    const characteristic = await this.connectedDevice.readCharacteristicForService(
+    const base64 = this.encodeBase64(command);
+    await this.connectedDevice.writeCharacteristicWithResponseForService(
       SMART_BOTTLE_SERVICE_UUID,
-      BATTERY_CHARACTERISTIC_UUID
+      COMMAND_CHARACTERISTIC_UUID,
+      base64
     );
+  }
 
-    if (characteristic?.value) {
-      const data = this.decodeBase64(characteristic.value);
-      const batteryLevel = data[0];
-      useBottleStore.getState().setBatteryLevel(batteryLevel);
-      return batteryLevel;
-    }
+  async tare(): Promise<void> {
+    await this.sendCommand("t");
+  }
 
-    return 0;
+  async eraseCalibration(): Promise<void> {
+    await this.sendCommand("e");
+  }
+
+  private encodeBase64(value: string): string {
+    return btoa(value);
   }
 
   private decodeBase64(base64: string): Uint8Array {

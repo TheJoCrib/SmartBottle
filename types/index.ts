@@ -125,7 +125,6 @@ export interface BLEDevice {
 export interface WeightData {
   weightG: number;
   timestamp: number;
-  batteryLevel?: number;
 }
 
 export interface DailyStats {

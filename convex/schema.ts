@@ -26,8 +26,11 @@ export default defineSchema({
     xp: v.number(),
     level: v.number(),
     createdAt: v.number(),
+    mirrorShareCode: v.optional(v.string()),
+    mirrorEnabled: v.optional(v.boolean()),
   })
-    .index("by_email", ["email"]),
+    .index("by_email", ["email"])
+    .index("by_mirror_code", ["mirrorShareCode"]),
 
   sessions: defineTable({
     userId: v.id("users"),
@@ -49,6 +52,9 @@ export default defineSchema({
     bleDeviceId: v.optional(v.string()),
     isActive: v.boolean(),
     createdAt: v.number(),
+    lastRefillAt: v.optional(v.number()),
+    lastWeightG: v.optional(v.number()),
+    lastWeightAt: v.optional(v.number()),
   })
     .index("by_user", ["userId"])
     .index("by_ble_device", ["bleDeviceId"]),

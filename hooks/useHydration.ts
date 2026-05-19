@@ -1,98 +1,179 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef } from "react";
+import { useQuery } from "convex/react";
+import { api } from "../convex/_generated/api";
 import { useBottleStore } from "../stores/bottleStore";
+import { useHydrationStore } from "../stores/hydrationStore";
 import { useAuthStore } from "../stores/authStore";
 import { offlineService } from "../services/offline";
 import { detectConsumption, detectRefill } from "../utils/hydration";
+import {
+  CONSUMPTION_THRESHOLD_G,
+  REFILL_THRESHOLD_G,
+  OFF_SCALE_MARGIN_G,
+} from "../constants";
 
-const CONSUMPTION_THRESHOLD_G = 10;
-const REFILL_THRESHOLD_G = 50;
+const LOG_DEBOUNCE_MS = 5000;
 
-interface UseHydrationOptions {
-  bottleId?: string;
-  emptyWeightG: number;
-  fullWeightG: number;
-  capacityMl: number;
-  defaultBeverageTypeId?: string;
-}
+const STABILITY_SAMPLES = 3;
+const STABILITY_TOLERANCE_G = 5;
 
-export function useHydration(options: UseHydrationOptions) {
-  const { currentWeight, isConnected } = useBottleStore();
-  const { token } = useAuthStore();
+const MAX_MEASURING_MS = 4000;
 
-  const previousWeightRef = useRef<number | null>(null);
-  const lastLogTimeRef = useRef<number>(0);
-  const isProcessingRef = useRef(false);
+export function useHydration(): void {
+  const currentWeight = useBottleStore((s) => s.currentWeight);
+  const isConnected = useBottleStore((s) => s.isConnected);
+  const isCalibrating = useBottleStore((s) => s.isCalibrating);
+  const setMeasuringDrink = useBottleStore((s) => s.setMeasuringDrink);
+  const token = useAuthStore((s) => s.token);
 
-  const { emptyWeightG, fullWeightG, capacityMl, bottleId, defaultBeverageTypeId } = options;
+  const activeBottleId = useHydrationStore((s) => s.activeBottleId);
+  const emptyWeightG = useHydrationStore((s) => s.emptyWeightG);
+  const isCalibrated = useHydrationStore((s) => s.isCalibrated);
+  const demoMode = useHydrationStore((s) => s.demoMode);
+  const addIntake = useHydrationStore((s) => s.addIntake);
 
-  const weight = currentWeight ?? 0;
+  const beverages = useQuery(api.beverages.list, token ? { token } : "skip");
+  const defaultBeverageId =
+    beverages?.find((b: any) => b.name === "Water")?._id ||
+    beverages?.[0]?._id ||
+    null;
 
-  const waterWeightG = Math.max(0, weight - emptyWeightG);
-  const maxWaterWeightG = fullWeightG - emptyWeightG;
-  const waterLevelMl = maxWaterWeightG > 0
-    ? Math.round((waterWeightG / maxWaterWeightG) * capacityMl)
-    : 0;
-  const waterLevelPercent = capacityMl > 0
-    ? Math.min(100, Math.round((waterLevelMl / capacityMl) * 100))
-    : 0;
+  const baselineRef = useRef<number | null>(null);
+  const lastLogAtRef = useRef<number>(0);
+  const processingRef = useRef(false);
+  const wasOffScaleRef = useRef(false);
+  const stableBufferRef = useRef<number[]>([]);
+  const measuringStartAtRef = useRef<number | null>(null);
 
-  const processWeightChange = useCallback(async () => {
-    if (!isConnected || !token || isProcessingRef.current || currentWeight === null) return;
-    if (previousWeightRef.current === null) {
-      previousWeightRef.current = currentWeight;
+  useEffect(() => {
+    baselineRef.current = null;
+    wasOffScaleRef.current = false;
+    stableBufferRef.current = [];
+    measuringStartAtRef.current = null;
+    setMeasuringDrink(false);
+  }, [activeBottleId, setMeasuringDrink]);
+
+  useEffect(() => {
+    if (!isConnected) {
+      baselineRef.current = null;
+      wasOffScaleRef.current = false;
+      stableBufferRef.current = [];
+      measuringStartAtRef.current = null;
+      setMeasuringDrink(false);
+    }
+  }, [isConnected, setMeasuringDrink]);
+
+  useEffect(() => {
+    if (!isCalibrating) {
+      baselineRef.current = null;
+      wasOffScaleRef.current = false;
+      stableBufferRef.current = [];
+      measuringStartAtRef.current = null;
+      setMeasuringDrink(false);
+    }
+  }, [isCalibrating, setMeasuringDrink]);
+
+  useEffect(() => {
+    if (demoMode) return;
+    if (!isConnected || !isCalibrated) return;
+    if (isCalibrating) return;
+    if (currentWeight === null) return;
+    if (!token || !activeBottleId || !defaultBeverageId) return;
+    if (processingRef.current) return;
+
+    const curr = currentWeight;
+
+    if (curr < emptyWeightG - OFF_SCALE_MARGIN_G) {
+      wasOffScaleRef.current = true;
+      stableBufferRef.current = [];
+      if (measuringStartAtRef.current === null) {
+        measuringStartAtRef.current = Date.now();
+      }
+      setMeasuringDrink(true);
       return;
     }
 
-    const now = Date.now();
+    if (baselineRef.current === null) {
+      baselineRef.current = curr;
+      wasOffScaleRef.current = false;
+      stableBufferRef.current = [];
+      return;
+    }
 
-    if (now - lastLogTimeRef.current < 5000) {
-      previousWeightRef.current = currentWeight;
+    if (!wasOffScaleRef.current) return;
+
+    const buf = stableBufferRef.current;
+    buf.push(curr);
+    if (buf.length > STABILITY_SAMPLES) buf.shift();
+    if (buf.length < STABILITY_SAMPLES) return;
+
+    const min = Math.min(...buf);
+    const max = Math.max(...buf);
+
+    const measuringFor = measuringStartAtRef.current
+      ? Date.now() - measuringStartAtRef.current
+      : 0;
+    const timedOut = measuringFor > MAX_MEASURING_MS;
+
+    if (max - min > STABILITY_TOLERANCE_G && !timedOut) return;
+
+    const sorted = [...buf].sort((a, b) => a - b);
+    const analyzedWeight = sorted[Math.floor(sorted.length / 2)];
+    wasOffScaleRef.current = false;
+    stableBufferRef.current = [];
+    measuringStartAtRef.current = null;
+    setMeasuringDrink(false);
+
+    const prev = baselineRef.current;
+
+    if (detectRefill(prev, analyzedWeight, REFILL_THRESHOLD_G)) {
+      baselineRef.current = analyzedWeight;
       return;
     }
 
     const consumed = detectConsumption(
-      previousWeightRef.current,
-      currentWeight,
-      CONSUMPTION_THRESHOLD_G
+      prev,
+      analyzedWeight,
+      CONSUMPTION_THRESHOLD_G,
     );
+    if (consumed <= 0) return;
 
-    if (consumed > 0 && defaultBeverageTypeId) {
-      isProcessingRef.current = true;
+    const now = Date.now();
+    if (now - lastLogAtRef.current < LOG_DEBOUNCE_MS) return;
+
+    processingRef.current = true;
+    (async () => {
       try {
+        const d = new Date();
+        const localDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
         await offlineService.executeOrQueue("log_drink", {
           token,
-          bottleId,
-          beverageTypeId: defaultBeverageTypeId,
+          bottleId: activeBottleId,
+          beverageTypeId: defaultBeverageId,
           amountMl: consumed,
           isManual: false,
+          localDate,
         });
-        lastLogTimeRef.current = now;
-      } catch (error) {
-        console.error("Auto-log failed:", error);
+        await addIntake(consumed);
+        lastLogAtRef.current = now;
+        baselineRef.current = analyzedWeight;
+      } catch (e) {
+        console.error("Auto-log drink failed:", e);
       } finally {
-        isProcessingRef.current = false;
+        processingRef.current = false;
       }
-    }
-
-    detectRefill(
-      previousWeightRef.current,
-      currentWeight,
-      REFILL_THRESHOLD_G
-    );
-
-    previousWeightRef.current = currentWeight;
-  }, [currentWeight, isConnected, token, bottleId, defaultBeverageTypeId]);
-
-  useEffect(() => {
-    if (isConnected && currentWeight !== null && currentWeight > 0) {
-      processWeightChange();
-    }
-  }, [currentWeight, isConnected, processWeightChange]);
-
-  return {
-    waterLevelMl,
-    waterLevelPercent,
-    currentWeightG: weight,
+    })();
+  }, [
+    currentWeight,
     isConnected,
-  };
+    isCalibrated,
+    isCalibrating,
+    demoMode,
+    token,
+    activeBottleId,
+    emptyWeightG,
+    defaultBeverageId,
+    addIntake,
+    setMeasuringDrink,
+  ]);
 }

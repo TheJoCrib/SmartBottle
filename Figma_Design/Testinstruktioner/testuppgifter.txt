@@ -4,34 +4,42 @@ Projekt: Vätskebalans (Smart Bottle)
 Datum:
 Testperson:
 
-Gör uppgifterna i ordning. Försök lösa allt på egen hand utan hjälp.
-Skriv vad du tycker efter varje uppgift och ge betyg 1-5.
+1. Öppna appen. Vad ser du? Beskriv.
 
-1. Öppna appen. Beskriv vad du ser och vad du tror appen handlar om.
+2. Skapa ett konto om du inte har ett. Har du redan ett, logga in.
 
-2. Kolla runt på startsidan. Vad kan du göra härifrån?
+3. Fyll i din profil: kön, ålder, längd, vikt.
 
-3. Kalibrera din flaska. Tänk att den väger 350g tom och 850g full.
+4. Välj din aktivitetsnivå.
 
-4. Beskriv vad som förändrats på startsidan efter kalibreringen.
+5. Gå igenom hälsotillstånd. Hoppa över om inget gäller dig.
 
-5. Simulera att du dricker vatten. Beskriv vad som händer.
+6. Du får ett rekommenderat dagligt mål. Stämmer det med vad du förväntar dig?
 
-6. Hitta var du ändrar ditt dagliga mål och sätt det till 3000 ml.
+7. Lägg till din första flaska. Ge den ett namn och välj typ och färg.
 
-7. Slå på påminnelser och skicka en testnotis till dig själv.
+8. Nu är du på hemskärmen. Vad ser du? Vad visar flaskan?
 
-8. Gå tillbaka och fyll på flaskan. Beskriv vad som händer.
+9. Gå till inställningar och aktivera demoläge.
 
-9. Nollställ dagens vätskeintag.
+10. Ändra flaskstorlek i demoläget till 800 ml.
 
-10. Kalibrera om flaskan med nya vikter: 300g tom, 780g full.
+11. Dra i slidern så att du simulerar att du dricker vatten. Vad händer med flaskan?
 
-Avslutande frågor:
+12. Fyll på flaskan igen via demoläget.
 
-- Vad tyckte du om appen överlag?
-- Något som var extra bra?
-- Något som var förvirrande eller irriterande?
-- Skulle du använda appen på riktigt?
+13. Gå till statistik-sidan. Klicka på olika dagar i veckodiagrammet. Vad visas?
 
-Tack för att du testade!
+14. Byt till månadsöversikten. Klicka på en dag med data. Vad ser du?
+
+15. Gå tillbaka till inställningar och ändra ditt dagsmål till 3000 ml.
+
+16. Gå till din profil och ändra din aktivitetsnivå. Ändras ditt rekommenderade mål?
+
+17. Stäng av demoläget. Vad visar hemskärmen nu?
+
+18. Hitta var du kan ta bort en flaska.
+
+19. Hitta var du kan logga ut.
+
+20. Hitta var du kan radera hela ditt konto.

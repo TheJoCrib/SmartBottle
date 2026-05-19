@@ -139,6 +139,26 @@ export const remove = mutation({
   },
 });
 
+export const updateLiveWeight = mutation({
+  args: {
+    token: v.string(),
+    bottleId: v.id("bottles"),
+    weightG: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await validateSession(ctx, args.token);
+    const bottle = await ctx.db.get(args.bottleId);
+    if (!bottle || bottle.userId !== userId) {
+      return { success: false };
+    }
+    await ctx.db.patch(args.bottleId, {
+      lastWeightG: args.weightG,
+      lastWeightAt: Date.now(),
+    });
+    return { success: true };
+  },
+});
+
 export const calculateWaterLevel = query({
   args: {
     bottleId: v.id("bottles"),

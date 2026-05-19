@@ -1,61 +1,145 @@
-import { View, Text, TouchableOpacity } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
+import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
+import Animated, { FadeInDown } from "react-native-reanimated";
+import * as Haptics from "expo-haptics";
+import { colors, spacing, typography } from "../../constants/theme";
 
 export default function FirstBottle() {
+  const insets = useSafeAreaInsets();
+
+  const handleConnect = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    router.push("/bottle/add");
+  };
+
+  const handleSkip = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.replace("/(tabs)");
+  };
+
   return (
-    <SafeAreaView className="flex-1 bg-background-light dark:bg-background-dark">
-      <View className="flex-1 px-6 justify-center items-center">
-        
-        <View className="w-32 h-32 bg-primary-100 dark:bg-primary-900/30 rounded-full items-center justify-center mb-8">
-          <Text className="text-6xl">🍶</Text>
-        </View>
-
-        <Text className="text-2xl font-bold text-text-light-primary dark:text-text-dark-primary text-center">
-          Add your first{"\n"}smart bottle
-        </Text>
-
-        <Text className="text-text-light-secondary dark:text-text-dark-secondary text-center mt-3 px-6">
-          Connect your smart bottle via Bluetooth to start tracking your water
-          intake automatically.
-        </Text>
-
-        
-        <View className="w-full mt-8">
-          <TouchableOpacity
-            className="flex-row items-center bg-primary-500 rounded-xl py-4 px-5 mb-3"
-            onPress={() => router.replace("/bottle/add")}
-          >
-            <Ionicons name="bluetooth" size={24} color="white" />
-            <Text className="text-white font-semibold text-lg ml-3 flex-1">
-              Connect Smart Bottle
-            </Text>
-            <Ionicons name="chevron-forward" size={20} color="white" />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            className="flex-row items-center bg-surface-light dark:bg-surface-dark rounded-xl py-4 px-5 border border-gray-200 dark:border-gray-700"
-            onPress={() => router.replace("/(tabs)")}
-          >
-            <Ionicons name="time-outline" size={24} color="#64748B" />
-            <Text className="text-text-light-secondary dark:text-text-dark-secondary font-medium text-lg ml-3 flex-1">
-              Skip for now
-            </Text>
-            <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
-          </TouchableOpacity>
-        </View>
-
-        
-        <View className="mt-8 bg-secondary-50 dark:bg-secondary-900/30 rounded-xl p-4">
-          <View className="flex-row items-center">
-            <Ionicons name="information-circle" size={20} color="#319795" />
-            <Text className="text-secondary-700 dark:text-secondary-300 ml-2 flex-1 text-sm">
-              You can also log drinks manually without a smart bottle
-            </Text>
+    <View style={[styles.container, { paddingBottom: insets.bottom }]}>
+      <View style={styles.content}>
+        <Animated.View
+          entering={FadeInDown.delay(100).duration(500)}
+          style={styles.iconWrapper}
+        >
+          <View style={styles.iconCircle}>
+            <MaterialCommunityIcons
+              name="bottle-wine"
+              size={64}
+              color={colors.accent}
+            />
           </View>
-        </View>
+        </Animated.View>
+
+        <Animated.View
+          entering={FadeInDown.delay(250).duration(500)}
+          style={styles.textBlock}
+        >
+          <Text style={styles.title}>Lägg till din första flaska</Text>
+          <Text style={styles.description}>
+            Anslut din smarta flaska via Bluetooth för att börja spåra ditt
+            vätskeintag automatiskt.
+          </Text>
+        </Animated.View>
+
+        <Animated.View
+          entering={FadeInDown.delay(400).duration(500)}
+          style={styles.actions}
+        >
+          <TouchableOpacity
+            style={styles.primaryButton}
+            onPress={handleConnect}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="bluetooth" size={22} color="#FFFFFF" />
+            <Text style={styles.primaryButtonText}>Anslut smart flaska</Text>
+            <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.skipLink}
+            onPress={handleSkip}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.skipText}>Hoppa över</Text>
+          </TouchableOpacity>
+        </Animated.View>
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  content: {
+    flex: 1,
+    paddingHorizontal: spacing.page,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  iconWrapper: {
+    marginBottom: 32,
+  },
+  iconCircle: {
+    width: 128,
+    height: 128,
+    borderRadius: 64,
+    backgroundColor: colors.primaryMuted,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  textBlock: {
+    alignItems: "center",
+    marginBottom: 40,
+  },
+  title: {
+    fontSize: typography.title.fontSize,
+    fontWeight: typography.title.fontWeight,
+    color: colors.textPrimary,
+    textAlign: "center",
+  },
+  description: {
+    fontSize: typography.body.fontSize,
+    color: colors.textSecondary,
+    textAlign: "center",
+    marginTop: 12,
+    paddingHorizontal: 16,
+    lineHeight: 22,
+  },
+  actions: {
+    width: "100%",
+    alignItems: "center",
+  },
+  primaryButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.primary,
+    borderRadius: spacing.cardRadius,
+    height: 52,
+    paddingHorizontal: 20,
+    width: "100%",
+  },
+  primaryButtonText: {
+    color: "#FFFFFF",
+    fontSize: 17,
+    fontWeight: "600",
+    flex: 1,
+    marginLeft: 12,
+  },
+  skipLink: {
+    marginTop: 20,
+    paddingVertical: 8,
+  },
+  skipText: {
+    color: colors.textSecondary,
+    fontSize: 15,
+    fontWeight: "500",
+  },
+});

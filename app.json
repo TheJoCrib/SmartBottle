@@ -21,6 +21,7 @@
         "NSPhotoLibraryUsageDescription": "SmartBottle needs access to your photos to set your profile avatar.",
         "NSCameraUsageDescription": "SmartBottle needs access to your camera to take a profile photo.",
         "UIBackgroundModes": [
+          "bluetooth-central",
           "bluetooth-central"
         ],
         "ITSAppUsesNonExemptEncryption": false
@@ -38,7 +39,14 @@
         "android.permission.BLUETOOTH_ADMIN",
         "android.permission.BLUETOOTH_CONNECT",
         "android.permission.BLUETOOTH_SCAN",
-        "android.permission.ACCESS_FINE_LOCATION"
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
@@ -81,7 +89,8 @@
           ],
           "bluetoothAlwaysPermission": "SmartBottle needs Bluetooth to connect to your smart water bottle."
         }
-      ]
+      ],
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true
@@ -91,6 +100,12 @@
       "eas": {
         "projectId": "27298869-1c90-4eba-aa22-7cf2ca27acde"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/27298869-1c90-4eba-aa22-7cf2ca27acde"
     }
   }
 }

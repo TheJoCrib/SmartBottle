@@ -22,6 +22,7 @@ export const log = mutation({
     beverageTypeId: v.id("beverageTypes"),
     amountMl: v.number(),
     isManual: v.boolean(),
+    localDate: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const userId = await validateSession(ctx, args.token);
@@ -35,14 +36,16 @@ export const log = mutation({
       isManual: args.isManual,
     });
 
-    const today = new Date().toISOString().split("T")[0];
+    const today =
+      args.localDate ?? new Date().toISOString().split("T")[0];
     const streak = await ctx.db
       .query("streaks")
       .withIndex("by_user", (q) => q.eq("userId", userId))
       .first();
 
     if (streak) {
-      const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000)
+      const todayMs = new Date(today + "T00:00:00Z").getTime();
+      const yesterday = new Date(todayMs - 24 * 60 * 60 * 1000)
         .toISOString()
         .split("T")[0];
 

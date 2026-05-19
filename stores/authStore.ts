@@ -3,6 +3,10 @@ import * as SecureStore from "expo-secure-store";
 
 const TOKEN_KEY = "smartbottle_auth_token";
 
+const SECURE_STORE_OPTIONS: SecureStore.SecureStoreOptions = {
+  keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
+};
+
 interface AuthState {
   token: string | null;
   isLoading: boolean;
@@ -18,26 +22,26 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isAuthenticated: false,
 
   setToken: async (token: string) => {
-    await SecureStore.setItemAsync(TOKEN_KEY, token);
+    await SecureStore.setItemAsync(TOKEN_KEY, token, SECURE_STORE_OPTIONS);
     set({ token, isAuthenticated: true });
   },
 
   clearToken: async () => {
-    await SecureStore.deleteItemAsync(TOKEN_KEY);
+    await SecureStore.deleteItemAsync(TOKEN_KEY, SECURE_STORE_OPTIONS);
     set({ token: null, isAuthenticated: false });
   },
 
   loadToken: async () => {
     try {
-      const token = await SecureStore.getItemAsync(TOKEN_KEY);
+      const token = await SecureStore.getItemAsync(TOKEN_KEY, SECURE_STORE_OPTIONS);
       set({
         token,
         isAuthenticated: !!token,
         isLoading: false,
       });
     } catch (error) {
-      console.error("Error loading token:", error);
-      set({ isLoading: false });
+      console.warn("Error loading token:", error);
+      set({ token: null, isAuthenticated: false, isLoading: false });
     }
   },
 }));

@@ -37,7 +37,7 @@ export default function DevTools() {
   const [isScanning, setIsScanning] = useState(false);
   const [allDevices, setAllDevices] = useState<Device[]>([]);
   const [blePermissions, setBlePermissions] = useState<string>("Unknown");
-  const { isConnected, connectedDeviceId, currentWeight, batteryLevel } = useBottleStore();
+  const { isConnected, connectedDeviceId, currentWeight } = useBottleStore();
 
   const [notifPermission, setNotifPermission] = useState<string>("Unknown");
 
@@ -205,8 +205,8 @@ export default function DevTools() {
 
   const sendAchievementNotif = async () => {
     try {
-      await notificationService.sendAchievementUnlocked("First Sip", "🏆");
-      addLog("Sent: achievement notification");
+      await notificationService.sendMilestoneUnlocked("Första klunken");
+      addLog("Sent: milestone notification");
     } catch (e: any) {
       addLog(`Notification error: ${e.message}`);
     }
@@ -268,6 +268,47 @@ export default function DevTools() {
     } catch (e: any) {
       addLog(`Haptic error: ${e.message}`);
     }
+  };
+
+  const tareScale = async () => {
+    if (!isConnected) {
+      Alert.alert("Not connected", "Connect to the SmartBottle first.");
+      return;
+    }
+    try {
+      await bluetoothService.tare();
+      addLog("Sent: tare (scale zeroed)");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (e: any) {
+      addLog(`Tare failed: ${e.message}`);
+    }
+  };
+
+  const resetScaleCalibration = async () => {
+    if (!isConnected) {
+      Alert.alert("Not connected", "Connect to the SmartBottle first.");
+      return;
+    }
+    Alert.alert(
+      "Reset scale calibration?",
+      "This erases the saved HX711 scale factor on the Arduino. You will need to recalibrate with a known weight over Serial after the next reboot.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Erase",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await bluetoothService.eraseCalibration();
+              addLog("Sent: erase calibration");
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            } catch (e: any) {
+              addLog(`Erase failed: ${e.message}`);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const checkNetwork = async () => {
@@ -356,10 +397,7 @@ export default function DevTools() {
           <InfoRow label="Network" value={networkInfo} />
           <InfoRow label="Bottle Connected" value={isConnected ? `Yes (${connectedDeviceId})` : "No"} />
           {isConnected && (
-            <>
-              <InfoRow label="Weight" value={`${currentWeight}g`} />
-              <InfoRow label="Battery" value={batteryLevel !== null ? `${batteryLevel}%` : "N/A"} />
-            </>
+            <InfoRow label="Weight" value={`${currentWeight}g`} />
           )}
         </View>
         <View className="flex-row flex-wrap mt-2">
@@ -421,6 +459,27 @@ export default function DevTools() {
             ))}
           </View>
         )}
+
+        
+        <SectionHeader title="SmartBottle Scale" icon="scale" />
+        <Text className="text-xs text-text-light-muted dark:text-text-dark-muted mb-2">
+          Tare zeros the scale (only press when the scale is empty). Reset
+          calibration erases the saved HX711 scale factor on the Arduino.
+        </Text>
+        <View className="flex-row flex-wrap">
+          <DevButton
+            label="Tare (zero)"
+            onPress={tareScale}
+            color="#10B981"
+            icon="remove-circle"
+          />
+          <DevButton
+            label="Reset calibration"
+            onPress={resetScaleCalibration}
+            color="#EF4444"
+            icon="warning"
+          />
+        </View>
 
         
         <SectionHeader title="Notifications" icon="notifications" />
